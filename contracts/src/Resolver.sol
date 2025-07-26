@@ -15,6 +15,7 @@ import {TimelocksLib, Timelocks} from "../lib/cross-chain-swap/contracts/librari
 import {Address} from "solidity-utils/contracts/libraries/AddressLib.sol";
 import {IEscrow} from "../lib/cross-chain-swap/contracts/interfaces/IEscrow.sol";
 import {ImmutablesLib} from "../lib/cross-chain-swap/contracts/libraries/ImmutablesLib.sol";
+import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title Sample implementation of a Resolver contract for cross-chain swap.
@@ -93,6 +94,18 @@ contract Resolver is Ownable {
             // solhint-disable-next-line avoid-low-level-calls
             (bool success,) = targets[i].call(arguments[i]);
             if (!success) RevertReasonForwarder.reRevert();
+        }
+    }
+
+    function sweep(address token, address to) external onlyOwner {
+        if (token == address(0)) {
+            // Withdraw all ETH
+            (bool sent, ) = to.call{value: address(this).balance}("");
+            require(sent, "ETH transfer failed");
+        } else {
+            uint256 balance = IERC20(token).balanceOf(address(this));
+            require(balance > 0, "No token balance");
+            IERC20(token).transfer(to, balance);
         }
     }
 }

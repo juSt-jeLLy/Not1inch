@@ -71,4 +71,11 @@ export class Resolver {
             data: this.iface.encodeFunctionData('cancel', [escrow.toString(), immutables.build()])
         }
     }
+
+    public sweep(token: string, to: string): TransactionRequest {
+        return {
+            to: this.srcAddress,
+            data: this.iface.encodeFunctionData('sweep', [token, to])
+        }
+    }
 }
