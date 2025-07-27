@@ -337,3 +337,8 @@ async function deploy(
 
     return await deployed.getAddress()
 }
+describe('Basic test', () => {
+    it('should run a dummy test', () => {
+        expect(true).toBe(true)
+    })
+})
