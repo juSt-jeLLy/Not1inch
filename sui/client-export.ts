@@ -58,7 +58,7 @@ export async function createHTLCDst(secretPreimage: string, timelockMs: number) 
 
   // 1. Split main gas coin for `coins` and `safety_deposit_coin`
   const [htlcCoin, safetyDepositCoin] = tx.splitCoins(tx.gas, [
-    tx.pure.u64(50_000_000),
+    tx.pure.u64(30_000_000),
     tx.pure.u64(10_000_000),
   ]);
 
@@ -119,6 +119,37 @@ export async function claimHTLC(htlcId: string, secretPreimage: string) {
   return res;
 }
 
+export async function claimHTLCsrc(htlcId: string, secretPreimage: string) {
+  const hashLock = Sdk.HashLock.forSingleFill(secretPreimage);
+  console.log('hashLock:', hashLock);
+  const hash = hashLock.toString();
+
+  console.log('The HTLC ID is:', htlcId);
+  console.log('The secret preimage is:', secretPreimage);
+  const tx = new Transaction();
+  const secretPreimageBytes = toUtf8Bytes(hash);
+  const secretPreimageNumberArray = Array.from(secretPreimageBytes);
+
+  tx.moveCall({
+    target: `${SUI_PACKAGE_ID}::htlc::claim_htlc`,
+    typeArguments: ['0x2::sui::SUI'],
+    arguments: [
+      tx.object(htlcId),
+      tx.pure.vector('u8', secretPreimageNumberArray),
+      tx.object('0x6'),
+    ],
+  });
+
+  const res = await suiClient.signAndExecuteTransaction({
+    signer: suiKeypairResolver,
+    transaction: tx,
+    options: { showEffects: true, showObjectChanges: true },
+  });
+
+  console.log('claim_htlc result:', res);
+  return res;
+}
+
 export async function recoverHTLC(htlcId: string) {
   const tx = new Transaction();
 
@@ -141,7 +172,7 @@ export async function recoverHTLC(htlcId: string) {
   return res;
 }
 
-async function fillOrder(orderId: string){
+export async function fillOrder(orderId: string){
   const txFillOrder = new Transaction();
   txFillOrder.moveCall({
     target: `${SUI_PACKAGE_ID}::htlc::fill_order`,
@@ -163,14 +194,14 @@ async function fillOrder(orderId: string){
   return res;
 }
 
-async function createHTLCSrc(secretPreimage: string, timelockMs: number, orderId: string  ) {
+
+export async function createHTLCSrc(secretPreimage: string, timelockMs: number, orderId: string  ) {
   const tx= new Transaction();
   const secretHash = keccak256(toUtf8Bytes(secretPreimage));
   const secretHashBytes = Buffer.from(secretHash.slice(2), 'hex');
   const secretHashNumberArray = Array.from(secretHashBytes);
-    const [htlcCoin, safetyDepositCoin] = tx.splitCoins(tx.gas, [
-    tx.pure.u64(50_000_000),
-    tx.pure.u64(50_000_000),
+    const [htlcCoin] = tx.splitCoins(tx.gas, [
+    tx.pure.u64(50_000_000)
     ]);
   tx.moveCall({
     target: `${SUI_PACKAGE_ID}::htlc::create_htlc_escrow_src`,
@@ -179,7 +210,6 @@ async function createHTLCSrc(secretPreimage: string, timelockMs: number, orderId
       
       tx.object(orderId),
       tx.makeMoveVec({ elements: [tx.object(htlcCoin)] }),
-      tx.object(safetyDepositCoin),   
       tx.pure.vector('u8', secretHashNumberArray), // secret_hash
       tx.pure.u64(timelockMs),                     // timelock_duration_ms
       tx.pure.address(suiAddressResolver),                 // resolver_address
@@ -196,6 +226,56 @@ async function createHTLCSrc(secretPreimage: string, timelockMs: number, orderId
 
 }
 
+
+export async function addSafetyDeposit(
+  htlcId: string,
+  
+) {
+
+  const tx = new Transaction();
+  const [depositCoin] = tx.splitCoins(tx.gas, [
+    tx.pure.u64(10_000_000),
+  ]);
+
+  tx.moveCall({
+    target: `${SUI_PACKAGE_ID}::htlc::add_safety_deposit`,
+    typeArguments: ['0x2::sui::SUI'],
+    arguments: [
+      tx.object(htlcId),       // &mut HashedTimelockEscrow<T>
+      tx.object(depositCoin),  // Coin<0x2::sui::SUI>
+    ],
+  });
+
+  const result = await suiClient.signAndExecuteTransaction({
+    signer: suiKeypairResolver,
+    transaction: tx,
+    options: {
+      showEffects: true,
+      showObjectChanges: true,
+    },
+  });
+
+  console.log('add_safety_deposit result:', result);
+  return result;
+}
+export async function auctionTick(orderId: string): Promise<number> {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${SUI_PACKAGE_ID}::htlc::auction_tick`,
+    typeArguments: ['0x2::sui::SUI'],
+    arguments: [
+      tx.object(orderId),
+      tx.object('0x6'),  // on‑chain Clock singleton
+    ],
+  });
+  const res = await suiClient.signAndExecuteTransaction({
+    signer: suiKeypairResolver,
+    transaction: tx,
+    options: { showEffects: true, showEvents: true },
+  });
+  const evt = res.events?.find(e => e.type.endsWith('AuctionTickEvent'));
+  return evt?.parsedJson?.current_price as number;
+}
 
 // async function testDst() {
 //   const secret = 'my_super_secret';

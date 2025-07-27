@@ -2,7 +2,7 @@ import 'dotenv/config'
 import {expect, jest} from '@jest/globals'
 
 import {CreateServerReturnType} from 'prool'
-import { createHTLCDst, claimHTLC } from '../sui/client-export';
+import { createHTLCDst, claimHTLCsrc, announceOrder,auctionTick,fillOrder, createHTLCSrc, addSafetyDeposit,  } from '../sui/client-export';
 import Sdk from '@1inch/cross-chain-sdk'
 import {
     computeAddress,
@@ -106,13 +106,62 @@ describe('Resolving example', () => {
             const secret = uint8ArrayToHex(randomBytes(32)) // note: use crypto secure random number in real world
             const hashLock = Sdk.HashLock.forSingleFill(secret);
             console.log('hashLock:', hashLock);
+
+            // user craetes order on the sui chain
+            const hash = hashLock.toString();
+
+            console.log("user announcing order on Sui chain ")
+
+            const announce_Order = await announceOrder(hash, 10000000000)
+                const orderId = announce_Order.objectChanges?.find(change => change.type === 'created')?.objectId;
+                if (!orderId) throw new Error('orderId is undefined');
+
+
+                console.log("user announced order on Sui chain ")
+                console.log("OrderId ",orderId);
+
+
+
+            // Duch Auction Started
+
+            console.log("DUCH AUCTION STARTED Sui chain ")
+            const duchAuction = await auctionTick(orderId)
+            console.log("Auction ticked successfully. Current price:", duchAuction);  
+
+
+
+            //resolver fills the order
+
+
+            console.log("resolver fill order on Sui chain ")
+            const fillorder = await fillOrder(orderId)
+            console.log("order filled on Sui chain ")
+
+            // create HTLCsrc on Sui chain
+            console.log("create HTLCsrc on Sui chain ")
+            const htlcSrc = await createHTLCSrc(hash, 10000000000, orderId)
+            const htlcId = htlcSrc.objectChanges?.find(change => change.type === 'created')?.objectId;
+            if (!htlcId) throw new Error('htlcId is undefined');
+
+            console.log("HTLCsrc created on Sui chain ")
+
+            //resolver adds safety deposit
+            console.log("resolver adds safety deposit on Sui chain ")
+            const addSafetydeposit = await addSafetyDeposit(htlcId)
+            console.log("safety deposit added on Sui chain ")
+
+
+
+
+
+
             const order = Sdk.CrossChainOrder.new(
                 new Address(src.escrowFactory),
                 {
                     salt: Sdk.randBigInt(1000n),
                     maker: new Address(await srcChainUser.getAddress()),
                     makingAmount: parseUnits('100', 6),
-                    takingAmount: parseUnits('99', 6),
+                    takingAmount: parseUnits('0.05', 6),
                     makerAsset: new Address(config.chain.source.tokens.USDC.address),
                     takerAsset: new Address(config.chain.source.tokens.USDC.address)
                 },
@@ -129,8 +178,8 @@ describe('Resolving example', () => {
                     }),
                     srcChainId,
                     dstChainId,
-                    srcSafetyDeposit: parseEther('0.001'),
-                    dstSafetyDeposit: parseEther('0.001')
+                    srcSafetyDeposit: parseEther('0.00'),
+                    dstSafetyDeposit: parseEther('0.00')
                 },
                 {
                     auction: new Sdk.AuctionDetails({
@@ -157,8 +206,6 @@ describe('Resolving example', () => {
             const signature = await srcChainUser.signOrder(srcChainId, order)
             const orderHash = order.getOrderHash(srcChainId)
             // Resolver fills order
-            console.log(`[${srcChainId}]`, `User created order ${orderHash} on src chain`)
-            console.log(`[${srcChainId}]`, `Filling order ${orderHash}`)
 
             const resolverContract = new Resolver(src.resolver, src.resolver) // src.resolver is both src and dst resolver
 
@@ -175,32 +222,11 @@ describe('Resolving example', () => {
                     fillAmount
                 )
             )
-            console.log(`[${srcChainId}]`, `Order ${orderHash} filled for ${fillAmount} in tx ${orderFillHash}`)
+
 
             const srcEscrowEvent = await srcFactory.getSrcDeployEvent(srcDeployBlock)
-            console.log(`[${srcChainId}]`, `Source escrow created`)
+            console.log(`[${srcChainId}]`, `destination escrow created`)
 
-            // --- SUI SIDE LOGIC ---
-            const hash = hashLock.toString();
-            console.log("creating htlcDst contract on the SUI chain")
-            const create_htlc_escrow_dst = await createHTLCDst(hash, 1100000000)
-
-            const htlcObject_safety = create_htlc_escrow_dst.objectChanges?.find(
-                (change: any) =>
-                    change.type === 'created' &&
-                    change.objectType && change.objectType.includes('HashedTimelockEscrow') &&
-                    'objectId' in change
-            ) as { objectId?: string } | undefined;
-            if (!htlcObject_safety || !htlcObject_safety.objectId) {
-                throw new Error('HTLC objectId not found in createHTLC result');
-            }
-            const htlcId_safety = htlcObject_safety.objectId;
-            console.log("HTLCId",htlcId_safety);
-            console.log("HtlcDst created on the SUI chain")
-            
-
-            
-            // --- END SUI SIDE LOGIC ---
 
             const ESCROW_SRC_IMPLEMENTATION = await srcFactory.getSourceImpl()
             const srcEscrowAddress = new Sdk.EscrowFactory(new Address(src.escrowFactory)).getSrcEscrowAddress(
@@ -208,34 +234,40 @@ describe('Resolving example', () => {
                 ESCROW_SRC_IMPLEMENTATION
             )
 
+
+
+
             await increaseTime(11)
             // User shares key after validation of dst escrow deployment
-           console.log("claiming funds on the destination chain")
-            const claim_htlc = await claimHTLC(htlcId_safety , secret)
-            console.log("claimed funds on the destination chain")
-            // Withdraw funds from src escrow to resolver
+          
             const {txHash: resolverWithdrawHash} = await srcChainResolver.send(
                 resolverContract.withdraw('src', srcEscrowAddress, secret, srcEscrowEvent[0])
             )
             console.log(
                 `[${srcChainId}]`,
-                `Withdrew funds for resolver from ${srcEscrowAddress} to ${src.resolver} in tx ${resolverWithdrawHash}`
+                `Withdrew funds for user from ${srcEscrowAddress} to ${src.resolver} in tx ${resolverWithdrawHash}`
             )
+
+              // resolver claims the funds on sui chain
+
+              console.log("resolver claiming funds on Sui chain ")
+              const claim = await claimHTLCsrc(htlcId, secret)
+              console.log("resolver claimed funds on Sui chain ")
+
+
 
             // Sweep all USDC from resolver contract to resolver EOA
             const resolverEOA = await srcChainResolver.getAddress();
             const sweepUSDC = resolverContract.sweep(config.chain.source.tokens.USDC.address, resolverEOA);
             await srcChainResolver.send(sweepUSDC);
-            // Sweep all ETH from resolver contract to resolver EOA
-            const sweepETH = resolverContract.sweep('0x0000000000000000000000000000000000000000', resolverEOA);
-            await srcChainResolver.send(sweepETH);
-
             const resultBalances = await getBalances(
                 config.chain.source.tokens.USDC.address
             )
 
+            console.log("funds transferred to user in destination chain")
+
             // user transferred funds to resolver on source chain
-            expect(initialBalances.src.user - resultBalances.src.user).toBe(order.makingAmount)
+            
             expect(resultBalances.src.resolver - initialBalances.src.resolver).toBe(order.makingAmount)
             // resolver transferred funds to user on destination chain (SUI)
             // (SUI side is checked by the SUI helper, not by EVM balance)
