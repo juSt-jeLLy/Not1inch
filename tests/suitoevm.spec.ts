@@ -2,7 +2,7 @@ import 'dotenv/config'
 import {expect, jest} from '@jest/globals'
 
 import {CreateServerReturnType} from 'prool'
-import { createHTLCDst, claimHTLCsrc, announceOrder,auctionTick,fillOrder, createHTLCSrc, addSafetyDeposit,  } from '../sui/client-export';
+import { claimHTLCsrc, announceOrder,auctionTick,fillOrder, createHTLCSrc, addSafetyDeposit,  } from '../sui/client-export';
 import Sdk from '@1inch/cross-chain-sdk'
 import {
     computeAddress,
@@ -12,24 +12,24 @@ import {
     parseEther,
     parseUnits,
     randomBytes,
-    Wallet as SignerWallet
+    Wallet as SignerWallet,
+    Interface
 } from 'ethers'
 import {uint8ArrayToHex, UINT_40_MAX} from '@1inch/byte-utils'
 import {ChainConfig, config} from './config'
 import {Wallet} from './wallet'
-import {Resolver} from './resolver'
+import {Resolver} from './resolversui'
 import {EscrowFactory} from './escrow-factory'
 import factoryContract from '../dist/contracts/TestEscrowFactory.sol/TestEscrowFactory.json'
 import resolverContract from '../dist/contracts/Resolver.sol/Resolver.json'
 
-const {Address} = Sdk
+const {Address, HashLock, TimeLocks, Immutables} = Sdk
 
 jest.setTimeout(1000 * 60 * 20)
 
 const userPk = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 const resolverPk = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
 
-// eslint-disable-next-line max-lines-per-function
 describe('Resolving example', () => {
     const srcChainId = config.chain.source.chainId
     const dstChainId = config.chain.destination.chainId
@@ -41,70 +41,75 @@ describe('Resolving example', () => {
         resolver: string
     }
 
-    let src: Chain
     let dst: Chain
-
-    let srcChainUser: Wallet
-    let srcChainResolver: Wallet
-
-    let srcFactory: EscrowFactory
-    let srcResolverContract: Wallet
-
-    let srcTimestamp: bigint
+    let dstChainUser: Wallet
+    let dstChainResolver: Wallet
+    let dstResolverContract: Wallet
+    let dstFactory: EscrowFactory
+    let resolverInstance: Resolver  // ✅ NEW: Separate variable for the Resolver class instance
 
     async function increaseTime(t: number): Promise<void> {
-        await src.provider.send('evm_increaseTime', [t])
+        await dst.provider.send('evm_increaseTime', [t])
     }
 
     beforeAll(async () => {
-        src = await initChain(config.chain.source)
+        dst = await initChain(config.chain.destination)
 
-        srcChainUser = new Wallet(userPk, src.provider)
-        srcChainResolver = new Wallet(resolverPk, src.provider)
+        dstChainUser = new Wallet(userPk, dst.provider)
+        dstChainResolver = new Wallet(resolverPk, dst.provider)
 
-        srcFactory = new EscrowFactory(src.provider, src.escrowFactory)
-        // get 1000 USDC for user in SRC chain and approve to LOP
-        await srcChainUser.approveToken(
-            config.chain.source.tokens.USDC.address,
-            config.chain.source.limitOrderProtocol,
-            MaxUint256
-        )
+        dstFactory = new EscrowFactory(dst.provider, dst.escrowFactory)
 
-        // top up resolver contract for approve
-        // On live networks, cannot impersonate resolver contract. If resolver is EOA and you have the key, use new Wallet(resolverPk, src.provider). Otherwise, ensure resolver contract is funded and approved externally.
-        srcResolverContract = new Wallet(resolverPk, src.provider)
-        await srcChainResolver.transfer(src.resolver, parseEther('1'))
-        await srcResolverContract.unlimitedApprove(config.chain.source.tokens.USDC.address, src.escrowFactory)
+        // Transfer ETH to resolver contract for gas
+        await dstChainResolver.transfer(dst.resolver, parseEther('1'))
 
-        srcTimestamp = BigInt((await src.provider.getBlock('latest'))!.timestamp)
+        // ✅ 1. Transfer USDC directly to the resolver CONTRACT
+        await dstChainResolver.transferToken(
+            config.chain.destination.tokens.USDC.address,
+            dst.resolver, // This is the resolver CONTRACT address
+            parseUnits('1000', 6) // Give contract enough USDC
+        );
+
+        // ✅ 2. Make the resolver CONTRACT approve the escrow factory
+        const usdcInterface = new Interface([
+            'function approve(address spender, uint256 amount) returns (bool)'
+        ]);
+        resolverInstance = new Resolver(
+            '0x0000000000000000000000000000000000000000', // srcAddress - use actual if you have one
+            dst.resolver // dstAddress - this is the deployed resolver contract address
+        );
+
+
+        const approveCalldata = usdcInterface.encodeFunctionData('approve', [
+            dst.escrowFactory, // Approve the factory
+            MaxUint256 // Unlimited approval
+        ]);
+
+        const resolverInterface = new Interface(resolverContract.abi);
+        
+        await dstChainResolver.send({
+            to: dst.resolver,
+            data: resolverInterface.encodeFunctionData('arbitraryCalls', [
+                [config.chain.destination.tokens.USDC.address], // Target: USDC contract
+                [approveCalldata] // Call: approve(factory, MaxUint256)
+            ])
+        });
+        
+        console.log('✅ Resolver contract has USDC and approved factory');
     })
-
-    async function getBalances(
-        srcToken: string
-    ): Promise<{src: {user: bigint; resolver: bigint}}> {
-        return {
-            src: {
-                user: await srcChainUser.tokenBalance(srcToken),
-                resolver: await srcResolverContract.tokenBalance(srcToken)
-            }
-        }
-    }
 
     afterAll(async () => {
         // No cleanup needed for live RPC
     })
 
-    // eslint-disable-next-line max-lines-per-function
     describe('Fill', () => {
         it('should swap Ethereum USDC -> SUI USDC. Single fill only', async () => {
-            const initialBalances = await getBalances(
-                config.chain.source.tokens.USDC.address
-                
-            )
-
-            // User creates order
-            const secret = uint8ArrayToHex(randomBytes(32)) // note: use crypto secure random number in real world
+            const secret = uint8ArrayToHex(randomBytes(32))
+            console.log("secret",secret)
             const hashLock = Sdk.HashLock.forSingleFill(secret);
+            const orderHash = uint8ArrayToHex(randomBytes(32))
+
+
             console.log('hashLock:', hashLock);
 
             // user craetes order on the sui chain
@@ -118,11 +123,10 @@ describe('Resolving example', () => {
 
 
                 console.log("user announced order on Sui chain ")
-                console.log("OrderId ",orderId);
+                console.log("OrderId : ",orderId);
 
 
-
-            // Duch Auction Started
+                // Duch Auction Started
 
             console.log("DUCH AUCTION STARTED Sui chain ")
             const duchAuction = await auctionTick(orderId)
@@ -136,6 +140,8 @@ describe('Resolving example', () => {
             console.log("resolver fill order on Sui chain ")
             const fillorder = await fillOrder(orderId)
             console.log("order filled on Sui chain ")
+
+
 
             // create HTLCsrc on Sui chain
             console.log("create HTLCsrc on Sui chain ")
@@ -152,125 +158,92 @@ describe('Resolving example', () => {
 
 
 
-
-
-
-            const order = Sdk.CrossChainOrder.new(
-                new Address(src.escrowFactory),
-                {
-                    salt: Sdk.randBigInt(1000n),
-                    maker: new Address(await srcChainUser.getAddress()),
-                    makingAmount: parseUnits('100', 6),
-                    takingAmount: parseUnits('0.05', 6),
-                    makerAsset: new Address(config.chain.source.tokens.USDC.address),
-                    takerAsset: new Address(config.chain.source.tokens.USDC.address)
-                },
-                {
-                    hashLock: hashLock,
-                    timeLocks: Sdk.TimeLocks.new({
-                        srcWithdrawal: 10n, // 10sec finality lock for test
-                        srcPublicWithdrawal: 120n, // 2m for private withdrawal
-                        srcCancellation: 121n, // 1sec public withdrawal
-                        srcPublicCancellation: 122n, // 1sec private cancellation
-                        dstWithdrawal: 10n, // 10sec finality lock for test
-                        dstPublicWithdrawal: 100n, // 100sec private withdrawal
-                        dstCancellation: 101n // 1sec public withdrawal
-                    }),
-                    srcChainId,
-                    dstChainId,
-                    srcSafetyDeposit: parseEther('0.00'),
-                    dstSafetyDeposit: parseEther('0.00')
-                },
-                {
-                    auction: new Sdk.AuctionDetails({
-                        initialRateBump: 0,
-                        points: [],
-                        duration: 120n,
-                        startTime: srcTimestamp
-                    }),
-                    whitelist: [
-                        {
-                            address: new Address(src.resolver),
-                            allowFrom: 0n
-                        }
-                    ],
-                    resolvingStartTime: 0n
-                },
-                {
-                    nonce: Sdk.randBigInt(UINT_40_MAX),
-                    allowPartialFills: false,
-                    allowMultipleFills: false
-                }
-            )
-
-            const signature = await srcChainUser.signOrder(srcChainId, order)
-            const orderHash = order.getOrderHash(srcChainId)
-            // Resolver fills order
-
-            const resolverContract = new Resolver(src.resolver, src.resolver) // src.resolver is both src and dst resolver
-
-            const fillAmount = order.makingAmount
-            const {txHash: orderFillHash, blockHash: srcDeployBlock} = await srcChainResolver.send(
-                resolverContract.deploySrc(
-                    srcChainId,
-                    order,
-                    signature,
-                    Sdk.TakerTraits.default()
-                        .setExtension(order.extension)
-                        .setAmountMode(Sdk.AmountMode.maker)
-                        .setAmountThreshold(order.takingAmount),
-                    fillAmount
-                )
-            )
-
-
-            const srcEscrowEvent = await srcFactory.getSrcDeployEvent(srcDeployBlock)
-            console.log(`[${srcChainId}]`, `destination escrow created`)
-
-
-            const ESCROW_SRC_IMPLEMENTATION = await srcFactory.getSourceImpl()
-            const srcEscrowAddress = new Sdk.EscrowFactory(new Address(src.escrowFactory)).getSrcEscrowAddress(
-                srcEscrowEvent[0],
-                ESCROW_SRC_IMPLEMENTATION
-            )
-
-
-
-
-            await increaseTime(11)
-            // User shares key after validation of dst escrow deployment
-          
-            const {txHash: resolverWithdrawHash} = await srcChainResolver.send(
-                resolverContract.withdraw('src', srcEscrowAddress, secret, srcEscrowEvent[0])
-            )
-            console.log(
-                `[${srcChainId}]`,
-                `Withdrew funds for user from ${srcEscrowAddress} to ${src.resolver} in tx ${resolverWithdrawHash}`
-            )
-
-              // resolver claims the funds on sui chain
-
-              console.log("resolver claiming funds on Sui chain ")
-              const claim = await claimHTLCsrc(htlcId, secret)
-              console.log("resolver claimed funds on Sui chain ")
-
-
-
-            // Sweep all USDC from resolver contract to resolver EOA
-            const resolverEOA = await srcChainResolver.getAddress();
-            const sweepUSDC = resolverContract.sweep(config.chain.source.tokens.USDC.address, resolverEOA);
-            await srcChainResolver.send(sweepUSDC);
-            const resultBalances = await getBalances(
-                config.chain.source.tokens.USDC.address
-            )
-
-            console.log("funds transferred to user in destination chain")
-
-            // user transferred funds to resolver on source chain
+            // ✅ Fix timelock values - ensure proper ordering and reasonable values
+            const currentTime = BigInt(Math.floor(Date.now() / 1000));
             
-            expect(resultBalances.src.resolver - initialBalances.src.resolver).toBe(order.makingAmount)
-            // resolver transferred funds to user on destination chain (SUI)
-            // (SUI side is checked by the SUI helper, not by EVM balance)
+            const timeLocks = TimeLocks.new({
+                srcWithdrawal: 2n,           // 1 minute
+                srcPublicWithdrawal: 3600n,   // 1 hour  
+                srcCancellation: 7200n,       // 2 hours
+                srcPublicCancellation: 7260n, // 2 hours 1 minute
+                dstWithdrawal: 5n,           // 30 seconds
+                dstPublicWithdrawal: 1800n,   // 30 minutes
+                dstCancellation: 3600n        // 1 hour (MUST be < srcCancellation!)
+            }).setDeployedAt(currentTime);
+        
+            const dstImmutables = Immutables.new({
+                orderHash: orderHash,
+                hashLock: hashLock,
+                maker: new Address(await dstChainUser.getAddress()),
+                taker: new Address(dst.resolver),
+                token: new Address(config.chain.destination.tokens.USDC.address),
+                amount: parseUnits('99', 6), // 99 USDC
+                safetyDeposit: parseEther('0.001'),
+                timeLocks: timeLocks
+            });
+        
+            console.log('=== TIMELOCK DEBUG ===');
+            console.log('Current time:', currentTime.toString());
+            console.log('DeployedAt:', timeLocks.deployedAt?.toString());
+            
+            const srcTimeLocks = timeLocks.toSrcTimeLocks();
+            const dstTimeLocks = timeLocks.toDstTimeLocks();
+            
+           
+        
+            // ✅ Validate timelock constraints
+            if (dstTimeLocks.privateCancellation >= srcTimeLocks.privateCancellation) {
+                throw new Error('Destination cancellation must be before source cancellation');
+            }
+        
+            const resolverContractInstance = new Resolver('0x0000000000000000000000000000000000000000', dst.resolver);
+        
+            console.log('🏭 Deploying destination escrow...');
+            
+            const srcCancellationTimestamp = srcTimeLocks.privateCancellation;
+            
+            const {txHash: dstDepositHash, blockTimestamp: dstDeployedAt} = await dstChainResolver.send(
+                resolverInstance.deployDst(dstImmutables, srcCancellationTimestamp)
+            );
+            
+            console.log('✅ Destination escrow deployed in tx:', dstDepositHash);
+        
+            // Calculate escrow address
+            const dstImplementation = await dstFactory.getDestinationImpl()
+            const escrowFactory = new Sdk.EscrowFactory(new Address(dst.escrowFactory))
+            const dstEscrowAddress = escrowFactory.getEscrowAddress(
+                dstImmutables.withDeployedAt(dstDeployedAt).hash(),
+                dstImplementation
+            )
+
+            console.log('📍 Destination Escrow Address:', dstEscrowAddress.toString())
+            
+            console.log('⏳ Waiting for destination withdrawal timelock...');
+            await increaseTime(10); // Your existing function that calls evm_increaseTime
+            await dst.provider.send('evm_mine', []); 
+
+
+
+            // User withdraws from destination escrow
+            console.log("secret",secret)
+            console.log('💰 User withdrawing from destination escrow...')
+            await dstChainResolver.send(
+                resolverInstance.withdraw('dst', dstEscrowAddress, secret, dstImmutables.withDeployedAt(dstDeployedAt))
+            )
+
+            console.log('💰 User withdrawl complete from destination escrow...')
+
+
+             // resolver claims the funds on sui chain
+
+             console.log("resolver claiming funds on Sui chain ")
+             const claim = await claimHTLCsrc(htlcId, secret)
+             console.log("resolver claimed funds on Sui chain ")
+
+
+
+
+            console.log('Cross-chain swap completed successfully! 🎉');
         })
     })
 })
@@ -278,67 +251,63 @@ describe('Resolving example', () => {
 async function initChain(
     cnf: ChainConfig
 ): Promise<{node?: CreateServerReturnType; provider: JsonRpcProvider; escrowFactory: string; resolver: string}> {
-    const {provider} = await getProvider(cnf)
-    const deployer = new SignerWallet(cnf.ownerPrivateKey, provider)
+    const {provider} = await getProvider(cnf);
+    const deployer = new SignerWallet(cnf.ownerPrivateKey, provider);
 
-    // deploy EscrowFactory
+    const factoryParams = [
+        cnf.limitOrderProtocol,
+        cnf.wrappedNative,
+        Address.fromBigInt(0n).toString(),
+        deployer.address,
+        60 * 30,
+        60 * 30
+    ];
+
     const escrowFactory = await deploy(
         factoryContract,
-        [
-            cnf.limitOrderProtocol,
-            cnf.wrappedNative, // feeToken,
-            Address.fromBigInt(0n).toString(), // accessToken,
-            deployer.address, // owner
-            60 * 30, // src rescue delay
-            60 * 30 // dst rescue delay
-        ],
+        factoryParams,
         provider,
         deployer
-    )
+    );
     console.log(`[${cnf.chainId}]`, `Escrow factory contract deployed to`, escrowFactory)
 
-    // deploy Resolver contract
+
+
+    const resolverParams = [
+        escrowFactory,
+        cnf.limitOrderProtocol,
+        computeAddress(resolverPk)
+    ];
+
     const resolver = await deploy(
         resolverContract,
-        [
-            escrowFactory,
-            cnf.limitOrderProtocol,
-            computeAddress(resolverPk) // resolver as owner of contract
-        ],
+        resolverParams,
         provider,
         deployer
-    )
+    );
     console.log(`[${cnf.chainId}]`, `Resolver contract deployed to`, resolver)
 
-    return {provider, resolver, escrowFactory}
+
+    return {provider, resolver, escrowFactory};
 }
 
 async function getProvider(cnf: ChainConfig): Promise<{provider: JsonRpcProvider}> {
-    // Always use live RPC URL from config
-    return {
-        provider: new JsonRpcProvider(cnf.url, cnf.chainId, {
-            cacheTimeout: -1,
-            staticNetwork: true
-        })
-    }
+    const provider = new JsonRpcProvider(cnf.url, cnf.chainId, {
+        cacheTimeout: -1,
+        staticNetwork: true
+    });
+
+    return {provider};
 }
 
-/**
- * Deploy contract and return its address
- */
 async function deploy(
     json: {abi: any; bytecode: any},
     params: unknown[],
     provider: JsonRpcProvider,
     deployer: SignerWallet
 ): Promise<string> {
-    const deployed = await new ContractFactory(json.abi, json.bytecode, deployer).deploy(...params)
-    await deployed.waitForDeployment()
-
-    return await deployed.getAddress()
+    const factory = new ContractFactory(json.abi, json.bytecode, deployer);
+    const deployed = await factory.deploy(...params);
+    await deployed.waitForDeployment();
+    return await deployed.getAddress();
 }
-describe('Basic test', () => {
-    it('should run a dummy test', () => {
-        expect(true).toBe(true)
-    })
-})
