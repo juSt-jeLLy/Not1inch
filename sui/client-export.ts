@@ -221,6 +221,7 @@ export async function createHTLCSrc(secretPreimage: string, timelockMs: number, 
     transaction: tx,
     options: { showEffects: true, showObjectChanges: true },
   });
+  console.log('create_htlc_escrow_src result:', res);
   return res;
 
 
