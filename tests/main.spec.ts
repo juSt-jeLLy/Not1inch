@@ -2,7 +2,10 @@ import 'dotenv/config'
 import {expect, jest} from '@jest/globals'
 
 import {CreateServerReturnType} from 'prool'
-import { createHTLCDst, claimHTLC } from '../sui/client-export';
+
+import { createHTLCDst, claimHTLCdst } from '../sui/clientpartial';
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+
 import Sdk from '@1inch/cross-chain-sdk'
 import {
     computeAddress,
@@ -25,7 +28,10 @@ import resolverContract from '../dist/contracts/Resolver.sol/Resolver.json'
 const {Address} = Sdk
 
 jest.setTimeout(1000 * 60 * 20)
+const SUI_PRIVATE_KEY_USER = process.env.SUI_PRIVATE_KEY_USER!;
 
+const suiKeypairUser = Ed25519Keypair.fromSecretKey(Buffer.from(SUI_PRIVATE_KEY_USER, 'hex'));
+const suiAddressUser = suiKeypairUser.getPublicKey().toSuiAddress();
 const userPk = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 const resolverPk = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
 
@@ -156,6 +162,7 @@ describe('Resolving example', () => {
 
             const signature = await srcChainUser.signOrder(srcChainId, order)
             const orderHash = order.getOrderHash(srcChainId)
+            const orderid = orderHash.toString();
             // Resolver fills order
             console.log(`[${srcChainId}]`, `User created order ${orderHash} on src chain`)
             console.log(`[${srcChainId}]`, `Filling order ${orderHash}`)
@@ -183,18 +190,12 @@ describe('Resolving example', () => {
             // --- SUI SIDE LOGIC ---
             const hash = hashLock.toString();
             console.log("creating htlcDst contract on the SUI chain")
-            const create_htlc_escrow_dst = await createHTLCDst(hash, 1100000000)
-
-            const htlcObject_safety = create_htlc_escrow_dst.objectChanges?.find(
-                (change: any) =>
-                    change.type === 'created' &&
-                    change.objectType && change.objectType.includes('HashedTimelockEscrow') &&
-                    'objectId' in change
-            ) as { objectId?: string } | undefined;
-            if (!htlcObject_safety || !htlcObject_safety.objectId) {
-                throw new Error('HTLC objectId not found in createHTLC result');
+            const create_htlc_escrow_dst = await createHTLCDst(hash, suiAddressUser,orderid)
+            
+            if (!create_htlc_escrow_dst) {
+                throw new Error('HTLC objectId not found in createHTLCDst result');
             }
-            const htlcId_safety = htlcObject_safety.objectId;
+            const htlcId_safety = create_htlc_escrow_dst;
             console.log("HTLCId",htlcId_safety);
             console.log("HtlcDst created on the SUI chain")
             
@@ -211,7 +212,8 @@ describe('Resolving example', () => {
             await increaseTime(11)
             // User shares key after validation of dst escrow deployment
            console.log("claiming funds on the destination chain")
-            const claim_htlc = await claimHTLC(htlcId_safety , secret)
+           const htlcId = htlcId_safety.toString();
+            const claim_htlc = await claimHTLCdst(htlcId , secret)
             console.log("claimed funds on the destination chain")
             // Withdraw funds from src escrow to resolver
             const {txHash: resolverWithdrawHash} = await srcChainResolver.send(

@@ -2,7 +2,7 @@ import 'dotenv/config'
 import {expect, jest} from '@jest/globals'
 
 import {CreateServerReturnType} from 'prool'
-import { claimHTLCsrc, announceOrder,auctionTick,fillOrder, createHTLCSrc, addSafetyDeposit,  } from '../sui/client-export';
+import { claimHTLCsrc, announceStandardOrder,auctionTick,fillStandardOrder, createHTLCSrc, addSafetyDeposit,  } from '../sui/clientpartial';
 import Sdk from '@1inch/cross-chain-sdk'
 import {
     computeAddress,
@@ -22,6 +22,10 @@ import {Resolver} from './resolversui'
 import {EscrowFactory} from './escrow-factory'
 import factoryContract from '../dist/contracts/TestEscrowFactory.sol/TestEscrowFactory.json'
 import resolverContract from '../dist/contracts/Resolver.sol/Resolver.json'
+import { fillOrder } from '../sui/client-export';
+
+import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
+
 
 const {Address, HashLock, TimeLocks, Immutables} = Sdk
 
@@ -29,6 +33,10 @@ jest.setTimeout(1000 * 60 * 20)
 
 const userPk = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
 const resolverPk = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
+const SUI_PRIVATE_KEY_RESOLVER = process.env.SUI_PRIVATE_KEY_RESOLVER!;
+
+const suiKeypairResolver = Ed25519Keypair.fromSecretKey(Buffer.from(SUI_PRIVATE_KEY_RESOLVER, 'hex'));
+const suiAddressResolver = suiKeypairResolver.getPublicKey().toSuiAddress();
 
 describe('Resolving example', () => {
     const srcChainId = config.chain.source.chainId
@@ -117,11 +125,9 @@ describe('Resolving example', () => {
 
             console.log("user announcing order on Sui chain ")
 
-            const announce_Order = await announceOrder(hash, 10000000000)
-                const orderId = announce_Order.objectChanges?.find(change => change.type === 'created')?.objectId;
-                if (!orderId) throw new Error('orderId is undefined');
-
-
+            const announce_Order = await announceStandardOrder(hash)
+            if (!announce_Order) throw new Error('announce_Order is undefined');
+                const orderId = announce_Order.toString();
                 console.log("user announced order on Sui chain ")
                 console.log("OrderId : ",orderId);
 
@@ -138,22 +144,23 @@ describe('Resolving example', () => {
 
 
             console.log("resolver fill order on Sui chain ")
-            const fillorder = await fillOrder(orderId)
+            const fillorder = await fillStandardOrder(orderId)
             console.log("order filled on Sui chain ")
 
 
 
             // create HTLCsrc on Sui chain
             console.log("create HTLCsrc on Sui chain ")
-            const htlcSrc = await createHTLCSrc(hash, 10000000000, orderId)
-            const htlcId = htlcSrc.objectChanges?.find(change => change.type === 'created')?.objectId;
+            const htlcSrc = await createHTLCSrc(hash,  orderId, suiAddressResolver)
+            if (!htlcSrc) throw new Error('htlcSrc is undefined');
+            const htlcId = htlcSrc.toString();
             if (!htlcId) throw new Error('htlcId is undefined');
 
             console.log("HTLCsrc created on Sui chain ")
 
             //resolver adds safety deposit
             console.log("resolver adds safety deposit on Sui chain ")
-            const addSafetydeposit = await addSafetyDeposit(htlcId)
+            const addSafetydeposit = await addSafetyDeposit(htlcId, suiKeypairResolver)
             console.log("safety deposit added on Sui chain ")
 
 
