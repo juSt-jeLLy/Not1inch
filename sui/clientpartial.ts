@@ -92,7 +92,7 @@ export async function announceStandardOrder(secretPreimage: string) {
             txAnnounceOrder.pure.vector('u8', secretHash),
             txAnnounceOrder.pure.u64(1_000_000_000), // start_price
             txAnnounceOrder.pure.u64(900_000_000), // reserve_price
-            txAnnounceOrder.pure.u64(60 * 1000), // duration_ms
+            txAnnounceOrder.pure.u64(60 * 1000 * 50), // duration_ms
             txAnnounceOrder.object('0x6'), // clock
         ],
     });
@@ -115,7 +115,7 @@ export async function fillStandardOrder(orderId: string) {
         typeArguments: ['0x2::sui::SUI'],
         arguments: [
             txFillOrder.object(orderId), // Pass the object ID for the shared object
-            txFillOrder.pure.u64(1_000_000_000), // bid_price - Set to start_price or higher to avoid E_PRICE_TOO_LOW
+            txFillOrder.pure.u64(1000_000_000), // bid_price - Set to start_price or higher to avoid E_PRICE_TOO_LOW
             txFillOrder.object('0x6'), // clock
         ],
     });
@@ -174,7 +174,7 @@ export async function createHTLCSrc(secretPreimage: string, orderId: string, res
     const secretHash = hexToU8Vector(keccak256(toUtf8Bytes(secretPreimage)));
     const tx = new Transaction();
     const [htlcCoin] = tx.splitCoins(tx.gas, [
-        tx.pure.u64(50_000_000)
+        tx.pure.u64(60_000_000)
     ]);
 
     tx.moveCall({
@@ -207,6 +207,35 @@ export async function claimHTLCdst(htlcId: string, secretPreimage: string) {
     console.log('Attempting to claim HTLC ID:', htlcId);
     const tx = new Transaction();
     const hashLock = Sdk.HashLock.forSingleFill(secretPreimage);
+    const hash = hashLock.toString();
+    const secretPreimageNumberArray = Array.from(toUtf8Bytes(hash));
+
+    tx.moveCall({
+        target: `${SUI_PACKAGE_ID}::htlc::claim_htlc`,
+        typeArguments: ['0x2::sui::SUI'],
+        arguments: [
+            tx.object(htlcId),
+            tx.pure.vector('u8', secretPreimageNumberArray),
+            tx.object('0x6'),
+        ],
+    });
+
+    const res = await suiClient.signAndExecuteTransaction({
+        signer: suiKeypairResolver,
+        transaction: tx,
+        options: { showEffects: true, showObjectChanges: true },
+    });
+
+    console.log('claim_htlc result:', res);
+    return res;
+}
+
+export async function claimHTLCdstpartial(htlcId: string, secretPreimage: string[]) {
+    console.log('Attempting to claim HTLC ID:', htlcId);
+    const tx = new Transaction();
+    
+    const leaves = Sdk.HashLock.getMerkleLeaves(secretPreimage)
+    const hashLock = Sdk.HashLock.forMultipleFills(leaves)
     const hash = hashLock.toString();
     const secretPreimageNumberArray = Array.from(toUtf8Bytes(hash));
 
@@ -370,7 +399,7 @@ export async function auctionTick(orderId: string): Promise<number> {
 //     return { orderId, merkleData: generateMerkleData(partsCount, secretPreimageBase) }; // Re-generate to get access to getProofForIndex
 // }
 
-async function partialAnnounceOrder(totalAmount: number, partsCount: number, secretPreimageBase: string) {
+export async function partialAnnounceOrder(totalAmount: number, partsCount: number, secretPreimageBase: string) {
     const tx = new Transaction();
     const merkleData = generateMerkleData(partsCount, secretPreimageBase);
     const { merkleRoot } = merkleData;
@@ -390,7 +419,7 @@ async function partialAnnounceOrder(totalAmount: number, partsCount: number, sec
     });
 
     const announceRes = await suiClient.signAndExecuteTransaction({
-        signer: suiKeypairResolver,
+        signer: suiKeypairUser,
         transaction: tx,
         options: { showEffects: true, showObjectChanges: true },
     });
@@ -466,7 +495,7 @@ async function createHTLCSrcPartial(
         ],
     });
     const res = await suiClient.signAndExecuteTransaction({
-        signer: suiKeypairResolver,
+        signer: suiKeypairUser,
         transaction: tx,
         options: { showEffects: true, showObjectChanges: true },
     });

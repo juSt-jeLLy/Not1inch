@@ -25,6 +25,14 @@ module sui_htlc_contract::htlc {
     const E_INVALID_MERKLE_PROOF: u64 = 11;
     const E_SECRET_INDEX_USED: u64 = 12;
     const E_ALREADY_FILLED: u64 = 13; // Reused for entire order filled
+    const E_NOT_CORRECT_MAKER_OR_RESOVLER: u64 = 14;
+    const E_SRC_ESCROW_ALREADY_EXIST: u64 = 15;
+    const E_SRC_ESCROW_DOES_NOT_EXIST: u64 = 16;
+    const E_ORDER_NOT_ACTIVE: u64 = 17;
+    const E_FUNDS_LESS_THAN_FILL_PRICE: u64 = 18; 
+    const E_NOT_RESOLVER: u64 = 19; // Used for HTLC cancellation
+    const E_NOT_MAKER: u64 = 20; // Used for HTLC cancellation
+    const E_NOT_SRC: u64 = 21; // Used for HTLC cancellation
 
     // Order status constants
     const STATUS_ANNOUNCED: u8 = 0;
@@ -42,6 +50,7 @@ module sui_htlc_contract::htlc {
         duration_ms: u64,
         start_price: u64,
         reserve_price: u64,
+        fill_price: u64, // This will be set when the order is filled
         status: u8,
     }
 
@@ -65,6 +74,7 @@ module sui_htlc_contract::htlc {
         merkle_root: vector<u8>,
         filled_parts_bitmap: vector<bool>,
         fills: vector<PartialFill>,
+        status: u8,
     }
 
     // Events
@@ -157,7 +167,7 @@ module sui_htlc_contract::htlc {
         claimed: bool,
         safety_deposit: Balance<0x2::sui::SUI>,
         isSrc: bool,
-        original_partial_order_id: ID,
+        order_id: ID,
         hash_lock_index: u64,
     }
 
@@ -182,6 +192,7 @@ module sui_htlc_contract::htlc {
             duration_ms,
             start_price,
             reserve_price,
+            fill_price: 0, // Initially set to 0, will be updated when filled
             status: STATUS_ANNOUNCED,
         };
         let oid = object::id(&order);
@@ -221,9 +232,10 @@ module sui_htlc_contract::htlc {
         let price_diff = (order.start_price - order.reserve_price) * elapsed / order.duration_ms;
         let current_price = order.start_price - price_diff;
         assert!(bid_price >= current_price, E_PRICE_TOO_LOW);
+        order.fill_price = bid_price; 
         order.status = STATUS_FILLED;
         order.resolver = resolver;
-        event::emit(OrderFilledEvent { order_id: object::id(order), resolver, fill_price: current_price });
+        event::emit(OrderFilledEvent { order_id: object::id(order), resolver, fill_price: bid_price });
     }
 
     public entry fun add_safety_deposit<T>(
@@ -249,27 +261,39 @@ module sui_htlc_contract::htlc {
         clock: &Clock,
         ctx: &mut TxContext,
     ) {
+        assert!(order.status == STATUS_ANNOUNCED, E_ORDER_NOT_ACTIVE);
         assert!(tx_context::sender(ctx) == order.maker, E_NOT_OWNER);
-        // assert!(order.resolver == _resolver_address, E_NOT_CORRECT_RESOLVER);
         assert!(order.secret_hash == secret_hash, E_INVALID_SECRET);
 
-        internal_create_htlc_escrow(
-            coins,
-            coin::zero<0x2::sui::SUI>(ctx),
-            secret_hash,
-            finality_lock_duration_ms,
-            resolver_exclusive_unlock_duration_ms,
-            resolver_cancellation_duration_ms,
-            maker_cancellation_duration_ms,
-            public_cancellation_incentive_duration_ms,
-            order.maker,
-            order.resolver,
-            true,
-            object::id(order),
-            0,
-            clock,
-            ctx
-        );
+        // Ensure coins value matches order.fill_price
+       let mut coins_clone = coins;
+let mut total_amount = 0;
+let mut i = 0;
+while (i < vector::length(&coins_clone)) {
+    let coin = vector::borrow(&coins_clone, i);
+    total_amount = total_amount + coin::value(coin);
+    i = i + 1;
+};
+assert!(total_amount >= order.fill_price, E_FUNDS_LESS_THAN_FILL_PRICE);
+
+internal_create_htlc_escrow(
+    coins_clone,
+    coin::zero<0x2::sui::SUI>(ctx),
+    secret_hash,
+    finality_lock_duration_ms,
+    resolver_exclusive_unlock_duration_ms,
+    resolver_cancellation_duration_ms,
+    maker_cancellation_duration_ms,
+    public_cancellation_incentive_duration_ms,
+    order.maker,
+    order.resolver,
+    true,
+    object::id(order),
+    0,
+    clock,
+    ctx
+);
+
     }
 
     public entry fun create_htlc_escrow_dst<T>(
@@ -283,7 +307,7 @@ module sui_htlc_contract::htlc {
         public_cancellation_incentive_duration_ms: u64,
         maker_address: address,
         resolver_address: address,
-        original_order_id: ID,
+        order_id: ID,
         clock: &Clock,
         ctx: &mut TxContext,
     ) {
@@ -300,7 +324,7 @@ module sui_htlc_contract::htlc {
             maker_address,
             resolver_address,
             false,
-            original_order_id,
+            order_id,
             0,
             clock,
             ctx
@@ -319,7 +343,7 @@ module sui_htlc_contract::htlc {
         maker_address: address,
         resolver_address: address,
         is_src: bool,
-        original_order_id: ID,
+        order_id: ID,
         hash_lock_index: u64,
         clock: &Clock,
         ctx: &mut TxContext,
@@ -362,7 +386,7 @@ module sui_htlc_contract::htlc {
             claimed: false,
             safety_deposit: sd_balance,
             isSrc: is_src,
-            original_partial_order_id: original_order_id,
+            order_id: order_id,
             hash_lock_index,
         };
 
@@ -408,11 +432,12 @@ module sui_htlc_contract::htlc {
 
         // Enforce exclusive claim period
         if (now < htlc.resolver_exclusive_unlock_expires_ms) {
-            if (htlc.isSrc) {
-                assert!(tx_context::sender(ctx) == htlc.resolver_address, E_NOT_SRC_RESOLVER);
-            } else {
-                assert!(tx_context::sender(ctx) == htlc.maker_address, E_NOT_DST_MAKER);
-            };
+            assert!(tx_context::sender(ctx) == htlc.resolver_address || tx_context::sender(ctx)== htlc.maker_address, E_NOT_CORRECT_MAKER_OR_RESOVLER);
+            // if (htlc.isSrc) {
+            //     assert!(tx_context::sender(ctx) == htlc.resolver_address, E_NOT_SRC_RESOLVER);
+            // } else {
+            //     assert!(tx_context::sender(ctx) == htlc.maker_address, E_NOT_DST_MAKER);
+            // };
         } else {
             // After exclusive period, anyone with the secret can claim (public unlock phase)
         };
@@ -441,6 +466,67 @@ module sui_htlc_contract::htlc {
         });
     }
 
+    // public entry fun recover_htlc_escrow<T>(
+    //     htlc: &mut HashedTimelockEscrow<T>,
+    //     clock: &Clock,
+    //     ctx: &mut TxContext,
+    // ) {
+    //     assert!(!htlc.claimed, E_ALREADY_CLAIMED);
+    //     let now = clock::timestamp_ms(clock);
+    //     let sender = tx_context::sender(ctx);
+
+    //     let locked_amount = balance::value(&htlc.locked_balance);
+    //     let safety_deposit_amount = balance::value(&htlc.safety_deposit);
+
+    //     let recipient_funds: address;
+    //     let recipient_safety_deposit: address;
+
+    //     // Stage 1: Resolver's Own Cancellation Window (A4/B4)
+    //     if (now >= htlc.resolver_cancellation_expires_ms && now < htlc.public_cancellation_incentive_expires_ms) {
+    //         assert!(sender == htlc.resolver_address, E_NOT_RESOLVER); // Only original resolver can cancel here
+    //         if (htlc.isSrc) {
+    //             recipient_funds = htlc.maker_address;
+    //         } else {
+    //             recipient_funds = htlc.resolver_address;
+    //         };
+    //         recipient_safety_deposit = htlc.resolver_address; // SD back to original resolver
+    //     }
+    //     // Stage 2: Public Cancellation Incentive (part of A5) - Any resolver can take SD if the original one fails
+    //     else if (now >= htlc.public_cancellation_incentive_expires_ms && now < htlc.maker_cancellation_expires_ms) {
+    //         // Here, sender should be a whitelisted resolver (if we add a ResolverRegistry).
+    //         // For hackathon, we'll assume any sender after this time can be a 'public' resolver.
+    //         recipient_funds = if (htlc.isSrc) { htlc.maker_address } else { htlc.resolver_address };
+    //         recipient_safety_deposit = sender; // Safety deposit goes to the cancelling resolver as incentive
+    //     }
+    //     // Stage 3: Maker's Final Cancellation Window (A5)
+    //     else if (now >= htlc.maker_cancellation_expires_ms) {
+    //         assert!(htlc.isSrc, E_NOT_SRC); // Only applicable for source HTLCs
+    //         assert!(sender == htlc.maker_address, E_NOT_MAKER); // Only maker can cancel their part
+    //         recipient_funds = htlc.maker_address;
+    //         recipient_safety_deposit = htlc.resolver_address; // SD back to original resolver (incentive period over)
+    //     } else {
+    //         abort E_TIMELOCK_NOT_EXPIRED; // No cancellation window is open yet
+    //     };
+
+    //     if (locked_amount > 0) {
+    //         let coin = coin::take(&mut htlc.locked_balance, locked_amount, ctx);
+    //         transfer::public_transfer(coin, recipient_funds);
+    //     };
+    //     if (safety_deposit_amount > 0) {
+    //         let sd_coin = coin::take(&mut htlc.safety_deposit, safety_deposit_amount, ctx);
+    //         transfer::public_transfer(sd_coin, recipient_safety_deposit);
+    //     };
+
+    //     htlc.claimed = true;
+
+    //     event::emit(HTLCRefundedEvent {
+    //         id: object::id(htlc),
+    //         caller: sender,
+    //         amount: locked_amount,
+    //         safety_deposit_amount: safety_deposit_amount,
+    //     });
+    // }
+
     public entry fun recover_htlc_escrow<T>(
         htlc: &mut HashedTimelockEscrow<T>,
         clock: &Clock,
@@ -458,26 +544,30 @@ module sui_htlc_contract::htlc {
 
         // Stage 1: Resolver's Own Cancellation Window (A4/B4)
         if (now >= htlc.resolver_cancellation_expires_ms && now < htlc.public_cancellation_incentive_expires_ms) {
-            assert!(sender == htlc.resolver_address, E_NOT_OWNER); // Only original resolver can cancel here
+            assert!(sender == htlc.resolver_address, E_NOT_OWNER); // Use E_NOT_OWNER or specific resolver error
             if (htlc.isSrc) {
                 recipient_funds = htlc.maker_address;
-            } else {
+            } else { // DST HTLC
                 recipient_funds = htlc.resolver_address;
             };
             recipient_safety_deposit = htlc.resolver_address; // SD back to original resolver
         }
-        // Stage 2: Public Cancellation Incentive (part of A5) - Any resolver can take SD if the original one fails
+        // Stage 2: Public Cancellation Incentive (part of A5)
         else if (now >= htlc.public_cancellation_incentive_expires_ms && now < htlc.maker_cancellation_expires_ms) {
-            // Here, sender should be a whitelisted resolver (if you add a ResolverRegistry).
-            // For hackathon, we'll assume any sender after this time can be a 'public' resolver.
+            // TODO: Optional: assert! sender is a whitelisted resolver
             recipient_funds = if (htlc.isSrc) { htlc.maker_address } else { htlc.resolver_address };
-            recipient_safety_deposit = sender; // Safety deposit goes to the cancelling resolver as incentive
+            recipient_safety_deposit = sender; // Safety deposit as incentive
         }
-        // Stage 3: Maker's Final Cancellation Window (A5)
+        // Stage 3: Final Cancellation Window for Maker (SRC) or Resolver (DST)
         else if (now >= htlc.maker_cancellation_expires_ms) {
-            assert!(sender == htlc.maker_address, E_NOT_OWNER); // Only maker can cancel their part
-            recipient_funds = htlc.maker_address;
-            recipient_safety_deposit = htlc.resolver_address; // SD back to original resolver (incentive period over)
+            if (htlc.isSrc) {
+                assert!(sender == htlc.maker_address, E_NOT_OWNER); // Maker cancels SRC HTLC
+                recipient_funds = htlc.maker_address;
+            } else { // It's a DST HTLC
+                assert!(sender == htlc.resolver_address, E_NOT_OWNER); // Original resolver cancels DST HTLC
+                recipient_funds = htlc.resolver_address;
+            };
+            recipient_safety_deposit = htlc.resolver_address; // SD back to original resolver
         } else {
             abort E_TIMELOCK_NOT_EXPIRED; // No cancellation window is open yet
         };
@@ -538,6 +628,7 @@ module sui_htlc_contract::htlc {
             merkle_root,
             filled_parts_bitmap,
             fills: vector::empty<PartialFill>(),
+            status: STATUS_ANNOUNCED,
         };
         let oid = object::id(&order);
         event::emit(PartialOrderAnnouncedEvent { order_id: oid, maker, total_amount, start_price, reserve_price, duration_ms, parts_count, merkle_root });
@@ -554,6 +645,7 @@ module sui_htlc_contract::htlc {
         clock: &Clock,
         ctx: &mut TxContext,
     ) {
+        assert!(order.status == STATUS_ANNOUNCED, E_ORDER_NOT_ACTIVE);
         assert!(order.remaining > 0, E_ALREADY_FILLED);
         let resolver = tx_context::sender(ctx);
         let now = clock::timestamp_ms(clock);
@@ -611,8 +703,8 @@ module sui_htlc_contract::htlc {
         hash_lock_index: u64,
         clock: &Clock,
         ctx: &mut TxContext,
-    ) {
-        assert!(tx_context::sender(ctx) == order.maker, E_NOT_OWNER);
+    ) { 
+        assert!(tx_context::sender(ctx) == order.maker, E_NOT_MAKER);
 
         // TODO: Add robust checks here to ensure this secret_hash and index
         // corresponds to a filled portion by resolver_address in the order.fills vector.
@@ -648,12 +740,12 @@ module sui_htlc_contract::htlc {
         public_cancellation_incentive_duration_ms: u64,
         maker_address: address,
         resolver_address: address,
-        original_partial_order_id: ID,
+        order_id: ID,
         hash_lock_index: u64,
         clock: &Clock,
         ctx: &mut TxContext,
     ) {
-        assert!(tx_context::sender(ctx) == resolver_address, E_NOT_OWNER);
+        assert!(tx_context::sender(ctx) == resolver_address, E_NOT_RESOLVER);
 
         internal_create_htlc_escrow(
             coins,
@@ -667,7 +759,7 @@ module sui_htlc_contract::htlc {
             maker_address,
             resolver_address,
             false,
-            original_partial_order_id,
+            order_id,
             hash_lock_index,
             clock,
             ctx
