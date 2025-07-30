@@ -2,7 +2,7 @@ import 'dotenv/config'
 import {expect, jest} from '@jest/globals'
 
 import {CreateServerReturnType} from 'prool'
-import { claimHTLCsrc, announceStandardOrder,claimHTLCdstpartial,fillOrderPartial,createHTLCSrcPartial, addSafetyDeposit,partialAnnounceOrder, claimHTLCsrcpartial  } from '../sui/clientpartial';
+import { claimHTLCsrc, announceStandardOrder,auctionTickpartial,fillOrderPartial,createHTLCSrcPartial, addSafetyDeposit,partialAnnounceOrder, claimHTLCsrcpartial  } from '../sui/clientpartial';
 import Sdk from '@1inch/cross-chain-sdk'
 import {
     computeAddress,
@@ -137,6 +137,13 @@ describe('Resolving example', () => {
             if (!partialOrderId) {
                 throw new Error('Partial Order ID is undefined');
             }
+
+
+
+
+            console.log("DUCH AUCTION STARTED Sui chain ")
+            const duchAuction = await auctionTickpartial(partialOrderId)
+            console.log("Auction ticked successfully. Current price:", duchAuction);  
 
             // Note: Partial orders don't support auction ticking
             // console.log("DUCH AUCTION STARTED Sui chain ")

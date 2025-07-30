@@ -392,6 +392,26 @@ export async function auctionTick(orderId: string): Promise<number> {
 }
 
 
+export async function auctionTickpartial(orderId: string): Promise<number> {
+    const tx = new Transaction();
+    tx.moveCall({
+        target: `${SUI_PACKAGE_ID}::htlc::partial_auction_tick`,
+        typeArguments: ['0x2::sui::SUI'],
+        arguments: [
+            tx.object(orderId),
+            tx.object('0x6'),
+        ],
+    });
+    const res = await suiClient.signAndExecuteTransaction({
+        signer: suiKeypairResolver,
+        transaction: tx,
+        options: { showEffects: true, showEvents: true },
+    });
+    const evt = res.events?.find(e => e.type.endsWith('AuctionTickEvent'));
+    return evt?.parsedJson?.current_price as number;
+}
+
+
 // --- PARTIAL FILL FUNCTIONS ---
 
 // async function partialAnnounceOrder(totalAmount: number, partsCount: number, secretPreimageBase: string) {
