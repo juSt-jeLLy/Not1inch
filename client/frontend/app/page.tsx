@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import { useState, useEffect } from "react";
-import { ConnectButton } from "@mysten/dapp-kit";
-import { ArrowRightIcon, QuestionMarkCircleIcon, QrCodeIcon } from "@heroicons/react/24/outline";
-import Navbar from "./components/Navbar"
+import { useCurrentAccount } from "@mysten/dapp-kit";
+import { ArrowRightIcon, QrCodeIcon } from "@heroicons/react/24/outline";
+import Navbar from "./components/Navbar";
 
 const tokens = [
   { 
@@ -36,20 +36,29 @@ const tokens = [
 export default function Home() {
   const [fromToken, setFromToken] = useState(tokens[0]);
   const [toToken, setToToken] = useState(tokens[1]);
-  const [amount, setAmount] = useState('');
   const [selectedRate, setSelectedRate] = useState('variable');
   const [receivingAddress, setReceivingAddress] = useState('');
   const [currentRate, setCurrentRate] = useState('0.0000');
   const [isWalletConnected, setIsWalletConnected] = useState(false);
-  // For Sui wallet connection state
-  const [isSuiWalletConnected, setIsSuiWalletConnected] = useState(false);
+
+
+  // Sui wallet state
+  const currentAccount = useCurrentAccount();
+  const isSuiWalletConnected = !!currentAccount;
+
   // Swap function for reversing fromToken and toToken
   const handleSwap = () => {
     setFromToken(toToken);
     setToToken(fromToken);
     setIsWalletConnected(false);
-    setIsSuiWalletConnected(false);
   };
+
+  // Auto-fill receiving address when Sui wallet is connected
+  useEffect(() => {
+    if (isSuiWalletConnected && toToken.id === 'sui' && currentAccount?.address) {
+      setReceivingAddress(currentAccount.address);
+    }
+  }, [isSuiWalletConnected, toToken.id, currentAccount?.address]);
 
   useEffect(() => {
     setCurrentRate((Math.random() * 0.1).toFixed(4));
@@ -59,28 +68,24 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fromToken.id, toToken.id]);
 
+  // Check if wallet connection is required and available
+  const isWalletConnectionValid = () => {
+    if (fromToken.id === 'eth') {
+      return isWalletConnected;
+    } else if (fromToken.id === 'sui') {
+      return isSuiWalletConnected;
+    } else {
+      return true; // No wallet required for other tokens
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a1a1a] via-[#242424] to-[#1a1a1a] text-white font-mono">
-
-      {/* Wallet Connect UI */}
-      <div className="flex justify-end mb-4">
-        {fromToken.id === 'eth' ? (
-          <button
-            onClick={() => setIsWalletConnected(!isWalletConnected)}
-            className={`px-6 py-2 rounded-xl bg-gradient-to-r from-[#ffd700] via-[#ffed4a] to-[#ffd700] text-black font-bold hover:shadow-lg hover:shadow-[#ffd700]/20 transition-all duration-300 hover:scale-105 ${isWalletConnected ? 'opacity-80' : ''}`}
-          >
-            {isWalletConnected ? 'MetaMask Connected' : 'Connect MetaMask'}
-          </button>
-        ) : fromToken.id === 'sui' ? (
-          <ConnectButton
-            className="!bg-gradient-to-r !from-[#ffd700] !via-[#ffed4a] !to-[#ffd700] !text-black !font-bold !rounded-xl !px-6 !py-2"
-            // onConnect={() => setIsSuiWalletConnected(true)}
-            // onDisconnect={() => setIsSuiWalletConnected(false)}
-          />
-        ) : (
-          <button disabled className="px-6 py-2 rounded-xl bg-gray-600/50 text-gray-400 font-bold cursor-not-allowed">No Wallet Required</button>
-        )}
-      </div>
+      {/* Navbar */}
+      <Navbar 
+        isWalletConnected={isWalletConnectionValid()} 
+        onWalletConnect={setIsWalletConnected} 
+      />
 
       <div className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
@@ -156,17 +161,17 @@ export default function Home() {
               </div>
 
               {/* Arrow */}
-            <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
-              <button
-                type="button"
-                onClick={handleSwap}
-                className="relative bg-black/50 rounded-full p-3 border border-[#ffd700]/20 hover:border-[#ffd700]/40 transition-all duration-300 hover:scale-110 cursor-pointer group"
-                aria-label="Swap tokens"
-              >
-                <div className="absolute inset-0 bg-[#ffd700]/20 rounded-full blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <ArrowRightIcon className="h-6 w-6 text-[#ffd700] relative" />
-              </button>
-            </div>
+              <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
+                <button
+                  type="button"
+                  onClick={handleSwap}
+                  className="relative bg-black/50 rounded-full p-3 border border-[#ffd700]/20 hover:border-[#ffd700]/40 transition-all duration-300 hover:scale-110 cursor-pointer group"
+                  aria-label="Swap tokens"
+                >
+                  <div className="absolute inset-0 bg-[#ffd700]/20 rounded-full blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <ArrowRightIcon className="h-6 w-6 text-[#ffd700] relative" />
+                </button>
+              </div>
 
               {/* To Token */}
               <div className="group bg-black/50 rounded-xl p-6 border border-[#ffd700]/10 hover:border-[#ffd700]/30 transition-all duration-300 hover:shadow-lg hover:shadow-[#ffd700]/10">
@@ -213,21 +218,26 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Connection Status Display */}
+            {fromToken.id === 'sui' && isSuiWalletConnected && (
+              <div className="mb-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg">
+                <div className="text-green-400 text-sm">
+                  ✅ Sui Wallet Connected: {currentAccount?.address.slice(0, 10)}...{currentAccount?.address.slice(-6)}
+                </div>
+              </div>
+            )}
+
             {/* Swap Button */}
             <button
-              disabled={
-                !receivingAddress ||
-                (fromToken.id === 'eth' && !isWalletConnected) ||
-                (fromToken.id === 'sui' && !isSuiWalletConnected)
-              }
+              disabled={!receivingAddress || !isWalletConnectionValid()}
               className={`relative w-full py-4 rounded-xl text-center font-bold text-lg transition-all duration-300 ${
-                receivingAddress && ((fromToken.id === 'eth' && isWalletConnected) || (fromToken.id === 'sui' && isSuiWalletConnected))
+                receivingAddress && isWalletConnectionValid()
                   ? 'bg-gradient-to-r from-[#ffd700] via-[#ffed4a] to-[#ffd700] text-black hover:shadow-lg hover:shadow-[#ffd700]/20 hover:scale-[1.02]'
                   : 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
               }`}
             >
               <span className="relative z-10">SWAP NOW</span>
-              {receivingAddress && ((fromToken.id === 'eth' && isWalletConnected) || (fromToken.id === 'sui' && isSuiWalletConnected)) && (
+              {receivingAddress && isWalletConnectionValid() && (
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#ffd700] via-[#ffed4a] to-[#ffd700] opacity-50 blur-lg transition-opacity duration-300 hover:opacity-100"></div>
               )}
             </button>
