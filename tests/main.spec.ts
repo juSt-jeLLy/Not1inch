@@ -32,8 +32,8 @@ const SUI_PRIVATE_KEY_USER = process.env.SUI_PRIVATE_KEY_USER!;
 
 const suiKeypairUser = Ed25519Keypair.fromSecretKey(Buffer.from(SUI_PRIVATE_KEY_USER, 'hex'));
 const suiAddressUser = suiKeypairUser.getPublicKey().toSuiAddress();
-const userPk = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
-const resolverPk = '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
+const userPk = '0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fedc'
+const resolverPk = '0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66'
 
 // eslint-disable-next-line max-lines-per-function
 describe('Resolving example', () => {
