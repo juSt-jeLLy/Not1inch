@@ -90,8 +90,8 @@ export async function announceStandardOrder(secretPreimage: string) {
         typeArguments: ['0x2::sui::SUI'],
         arguments: [
             txAnnounceOrder.pure.vector('u8', secretHash),
-            txAnnounceOrder.pure.u64(1_000_000_000), // start_price
-            txAnnounceOrder.pure.u64(900_000_000), // reserve_price
+            txAnnounceOrder.pure.u64(1_000_000_0), // start_price
+            txAnnounceOrder.pure.u64(900_000_0), // reserve_price
             txAnnounceOrder.pure.u64(60 * 1000 * 50), // duration_ms
             txAnnounceOrder.object('0x6'), // clock
         ],
@@ -115,7 +115,7 @@ export async function fillStandardOrder(orderId: string) {
         typeArguments: ['0x2::sui::SUI'],
         arguments: [
             txFillOrder.object(orderId), // Pass the object ID for the shared object
-            txFillOrder.pure.u64(1000_000_000), // bid_price - Set to start_price or higher to avoid E_PRICE_TOO_LOW
+            txFillOrder.pure.u64(1000_000_0), // bid_price - Set to start_price or higher to avoid E_PRICE_TOO_LOW
             txFillOrder.object('0x6'), // clock
         ],
     });
@@ -174,7 +174,7 @@ export async function createHTLCSrc(secretPreimage: string, orderId: string, res
     const secretHash = hexToU8Vector(keccak256(toUtf8Bytes(secretPreimage)));
     const tx = new Transaction();
     const [htlcCoin] = tx.splitCoins(tx.gas, [
-        tx.pure.u64(60_000_000)
+        tx.pure.u64(50_000_000)
     ]);
 
     tx.moveCall({

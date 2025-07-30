@@ -18,7 +18,7 @@ import {
     Wallet as SignerWallet
 } from 'ethers'
 import {uint8ArrayToHex, UINT_40_MAX} from '@1inch/byte-utils'
-import {ChainConfig, config} from './config'
+import {ChainConfig, config} from './config1'
 import {Wallet} from './wallet'
 import {Resolver} from './resolver'
 import {EscrowFactory} from './escrow-factory'
@@ -34,6 +34,11 @@ const suiKeypairUser = Ed25519Keypair.fromSecretKey(Buffer.from(SUI_PRIVATE_KEY_
 const suiAddressUser = suiKeypairUser.getPublicKey().toSuiAddress();
 const userPk = '0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fedc'
 const resolverPk = '0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66'
+
+const DEPLOYED_CONTRACTS = {
+    escrowFactory: '0xfde41A17EBfA662867DA7324C0Bf5810623Cb3F8', 
+    resolver: '0x1Ae0817d98a8A222235A2383422e1A1c03d73e3a'      
+}
 
 // eslint-disable-next-line max-lines-per-function
 describe('Resolving example', () => {
@@ -63,7 +68,7 @@ describe('Resolving example', () => {
     }
 
     beforeAll(async () => {
-        src = await initChain(config.chain.source)
+src = await initChain(config.chain.source)
 
         srcChainUser = new Wallet(userPk, src.provider)
         srcChainResolver = new Wallet(resolverPk, src.provider)
@@ -244,6 +249,37 @@ describe('Resolving example', () => {
         })
     })
 })
+
+
+
+async function initChainWithPredeployedContracts(
+    cnf: ChainConfig
+): Promise<{node?: CreateServerReturnType; provider: JsonRpcProvider; escrowFactory: string; resolver: string}> {
+    const {provider} = await getProvider(cnf)
+    
+    // Verify contracts exist at the specified addresses
+    const escrowFactoryCode = await provider.getCode(DEPLOYED_CONTRACTS.escrowFactory)
+    const resolverCode = await provider.getCode(DEPLOYED_CONTRACTS.resolver)
+    
+    if (escrowFactoryCode === '0x') {
+        throw new Error(`No contract found at EscrowFactory address: ${DEPLOYED_CONTRACTS.escrowFactory}`)
+    }
+    
+    if (resolverCode === '0x') {
+        throw new Error(`No contract found at Resolver address: ${DEPLOYED_CONTRACTS.resolver}`)
+    }
+    
+    console.log(`[${cnf.chainId}]`, `Using existing EscrowFactory at`, DEPLOYED_CONTRACTS.escrowFactory)
+    console.log(`[${cnf.chainId}]`, `Using existing Resolver at`, DEPLOYED_CONTRACTS.resolver)
+
+    return {
+        provider, 
+        resolver: DEPLOYED_CONTRACTS.resolver, 
+        escrowFactory: DEPLOYED_CONTRACTS.escrowFactory
+    }
+}
+
+
 
 async function initChain(
     cnf: ChainConfig

@@ -2,7 +2,7 @@ import 'dotenv/config'
 import {expect, jest} from '@jest/globals'
 
 import {CreateServerReturnType} from 'prool'
-import { claimHTLCsrc, announceStandardOrder,auctionTickpartial,fillOrderPartial,createHTLCSrcPartial, addSafetyDeposit,partialAnnounceOrder, claimHTLCsrcpartial  } from '../sui/clientpartial';
+import {auctionTickpartial,fillOrderPartial,createHTLCSrcPartial, addSafetyDeposit,partialAnnounceOrder, claimHTLCsrcpartial  } from '../sui/clientpartial';
 import Sdk from '@1inch/cross-chain-sdk'
 import {
     computeAddress,
@@ -22,7 +22,7 @@ import {Resolver} from './resolversui'
 import {EscrowFactory} from './escrow-factory'
 import factoryContract from '../dist/contracts/TestEscrowFactory.sol/TestEscrowFactory.json'
 import resolverContract from '../dist/contracts/Resolver.sol/Resolver.json'
-import { fillOrder } from '../sui/client-export';
+
 
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 
@@ -37,6 +37,7 @@ const SUI_PRIVATE_KEY_RESOLVER = process.env.SUI_PRIVATE_KEY_RESOLVER!;
 
 const suiKeypairResolver = Ed25519Keypair.fromSecretKey(Buffer.from(SUI_PRIVATE_KEY_RESOLVER, 'hex'));
 const suiAddressResolver = suiKeypairResolver.getPublicKey().toSuiAddress();
+
 
 describe('Resolving example', () => {
     const srcChainId = config.chain.source.chainId

@@ -22,7 +22,7 @@ import {Resolver} from './resolversui'
 import {EscrowFactory} from './escrow-factory'
 import factoryContract from '../dist/contracts/TestEscrowFactory.sol/TestEscrowFactory.json'
 import resolverContract from '../dist/contracts/Resolver.sol/Resolver.json'
-import { fillOrder } from '../sui/client-export';
+
 
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 

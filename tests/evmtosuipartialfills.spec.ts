@@ -2,7 +2,7 @@ import 'dotenv/config'
 import {expect, jest} from '@jest/globals'
 
 import {CreateServerReturnType} from 'prool'
-import { createHTLCDstPartial, claimHTLCdst, claimHTLCdstpartial } from '../sui/clientpartial';
+import { createHTLCDstPartial, claimHTLCdstpartial } from '../sui/clientpartial';
 import Sdk from '@1inch/cross-chain-sdk'
 import {
     computeAddress,
@@ -15,14 +15,13 @@ import {
     Wallet as SignerWallet
 } from 'ethers'
 import {uint8ArrayToHex, UINT_40_MAX} from '@1inch/byte-utils'
-import {ChainConfig, config} from './config'
+import {ChainConfig, config} from './config1'
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import {Wallet} from './wallet'
 import {Resolver} from './resolver'
 import {EscrowFactory} from './escrow-factory'
 import factoryContract from '../dist/contracts/TestEscrowFactory.sol/TestEscrowFactory.json'
 import resolverContract from '../dist/contracts/Resolver.sol/Resolver.json'
-import { hash } from 'crypto';
 
 const {Address} = Sdk
 
@@ -36,6 +35,11 @@ const suiKeypairUser = Ed25519Keypair.fromSecretKey(Buffer.from(SUI_PRIVATE_KEY_
 const suiAddressUser = suiKeypairUser.getPublicKey().toSuiAddress();
 const userPk = '0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fedc'
 const resolverPk = '0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66'
+const DEPLOYED_CONTRACTS = {
+    escrowFactory: '0xd3873FDF150b3fFFb447d3701DFD234DF452F367', 
+    resolver: '0xbdB493827007eE26c16F10F6EABad6E97D9ead7D'      
+}
+
 
 // eslint-disable-next-line max-lines-per-function
 describe('Resolving example', () => {
@@ -271,6 +275,32 @@ describe('Resolving example', () => {
         })
     })
 })
+async function initChainWithPredeployedContracts(
+    cnf: ChainConfig
+): Promise<{node?: CreateServerReturnType; provider: JsonRpcProvider; escrowFactory: string; resolver: string}> {
+    const {provider} = await getProvider(cnf)
+    
+    // Verify contracts exist at the specified addresses
+    const escrowFactoryCode = await provider.getCode(DEPLOYED_CONTRACTS.escrowFactory)
+    const resolverCode = await provider.getCode(DEPLOYED_CONTRACTS.resolver)
+    
+    if (escrowFactoryCode === '0x') {
+        throw new Error(`No contract found at EscrowFactory address: ${DEPLOYED_CONTRACTS.escrowFactory}`)
+    }
+    
+    if (resolverCode === '0x') {
+        throw new Error(`No contract found at Resolver address: ${DEPLOYED_CONTRACTS.resolver}`)
+    }
+    
+    console.log(`[${cnf.chainId}]`, `Using existing EscrowFactory at`, DEPLOYED_CONTRACTS.escrowFactory)
+    console.log(`[${cnf.chainId}]`, `Using existing Resolver at`, DEPLOYED_CONTRACTS.resolver)
+
+    return {
+        provider, 
+        resolver: DEPLOYED_CONTRACTS.resolver, 
+        escrowFactory: DEPLOYED_CONTRACTS.escrowFactory
+    }
+}
 
 async function initChain(
     cnf: ChainConfig
