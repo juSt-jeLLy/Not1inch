@@ -259,7 +259,33 @@ export async function claimHTLCdstpartial(htlcId: string, secretPreimage: string
     return res;
 }
 
+export async function claimHTLCsrcpartial(htlcId: string, secretPreimage: string[]) {
+    console.log('Attempting to claim HTLC ID:', htlcId);
+    const tx = new Transaction();
+    const leaves = Sdk.HashLock.getMerkleLeaves(secretPreimage)
+    const hashLock = Sdk.HashLock.forMultipleFills(leaves)
+    const hash = hashLock.toString();
+    const secretPreimageNumberArray = Array.from(toUtf8Bytes(hash));
 
+    tx.moveCall({
+        target: `${SUI_PACKAGE_ID}::htlc::claim_htlc`,
+        typeArguments: ['0x2::sui::SUI'],
+        arguments: [
+            tx.object(htlcId),
+            tx.pure.vector('u8', secretPreimageNumberArray),
+            tx.object('0x6'),
+        ],
+    });
+
+    const res = await suiClient.signAndExecuteTransaction({
+        signer: suiKeypairResolver,
+        transaction: tx,
+        options: { showEffects: true, showObjectChanges: true },
+    });
+
+    console.log('claim_htlc result:', res);
+    return res;
+}
 
 
 export async function claimHTLCsrc(htlcId: string, secretPreimage: string) {
@@ -431,7 +457,7 @@ export async function partialAnnounceOrder(totalAmount: number, partsCount: numb
 }
 
 
-async function fillOrderPartial(orderId: string, fillAmount: number, merkleData: ReturnType<typeof generateMerkleData>, targetSecretIndex: number) {
+export async function fillOrderPartial(orderId: string, fillAmount: number, merkleData: ReturnType<typeof generateMerkleData>, targetSecretIndex: number) {
     const tx = new Transaction();
 
     const targetSecretHash = merkleData.getLeafHashForIndex(targetSecretIndex);
@@ -465,7 +491,7 @@ async function fillOrderPartial(orderId: string, fillAmount: number, merkleData:
 }
 
 // --- CREATE HTLC SRC PARTIAL ---
-async function createHTLCSrcPartial(
+export async function createHTLCSrcPartial(
     orderId: string,
     secretPreimage: string,
     resolverAddress: string,
