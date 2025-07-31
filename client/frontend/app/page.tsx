@@ -76,8 +76,6 @@ const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
 			}),
 	});
 
-
-
 // ETH wallet state from AppKit
 const { address: ethAddress, isConnected: isEthConnected } = useAppKitAccount();
 
@@ -185,10 +183,10 @@ const handleSwapNow = async () => {
 
   console.log("Swap Data:", swapData);
 
-  const order = await suiClient.getObject({
-    id: "0x0d87b0e94a6fc1d07203a29deb5d67facb0e551808b5886959b29bfcbb71c57d",
-  });
-  console.log("Order Details:", order);
+  // const order = await suiClient.getObject({
+  //   id: "0x0d87b0e94a6fc1d07203a29deb5d67facb0e551808b5886959b29bfcbb71c57d",
+  // });
+  // console.log("Order Details:", order);
 
   // Step 1: Announce Order
   const txAnnounceOrder = new Transaction();
@@ -292,8 +290,6 @@ const handleSwapNow = async () => {
     `Swapping ${fromAmount} ${fromToken.name} for ${toAmount} ${toToken.name}`
   );
 };
-
-
 
 
 return (

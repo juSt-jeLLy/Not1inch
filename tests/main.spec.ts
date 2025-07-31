@@ -35,7 +35,7 @@ const suiAddressUser = suiKeypairUser.getPublicKey().toSuiAddress();
 const userPk = '0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fedc'
 const resolverPk = '0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66'
 
-const DEPLOYED_CONTRACTS = {
+export const DEPLOYED_CONTRACTS = {
     escrowFactory: '0xfde41A17EBfA662867DA7324C0Bf5810623Cb3F8', 
     resolver: '0x1Ae0817d98a8A222235A2383422e1A1c03d73e3a'      
 }
@@ -319,7 +319,7 @@ async function initChain(
     return {provider, resolver, escrowFactory}
 }
 
-async function getProvider(cnf: ChainConfig): Promise<{provider: JsonRpcProvider}> {
+export async function getProvider(cnf: ChainConfig): Promise<{provider: JsonRpcProvider}> {
     // Always use live RPC URL from config
     return {
         provider: new JsonRpcProvider(cnf.url, cnf.chainId, {

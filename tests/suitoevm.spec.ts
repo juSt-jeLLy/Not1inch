@@ -298,7 +298,7 @@ async function initChain(
     return {provider, resolver, escrowFactory};
 }
 
-async function getProvider(cnf: ChainConfig): Promise<{provider: JsonRpcProvider}> {
+export async function getProvider(cnf: ChainConfig): Promise<{provider: JsonRpcProvider}> {
     const provider = new JsonRpcProvider(cnf.url, cnf.chainId, {
         cacheTimeout: -1,
         staticNetwork: true
