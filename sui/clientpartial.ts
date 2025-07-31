@@ -467,7 +467,7 @@ export async function auctionTickpartial(orderId: string): Promise<number> {
 //     return { orderId, merkleData: generateMerkleData(partsCount, secretPreimageBase) }; // Re-generate to get access to getProofForIndex
 // }
 
-export async function partialAnnounceOrder(totalAmount: number, partsCount: number, merkleRoot) {
+export async function partialAnnounceOrder(totalAmount: number, partsCount: number, merkleRoot: string) {
     const tx = new Transaction();
    
 
@@ -480,7 +480,7 @@ export async function partialAnnounceOrder(totalAmount: number, partsCount: numb
             tx.pure.u64(900_000_000),   // reserve_price
             tx.pure.u64(60 * 1000),     // duration_ms
             tx.pure.u64(partsCount),
-            tx.pure.vector('u8', merkleRoot),
+            tx.pure.vector('u8', hexToU8Vector(merkleRoot)), 
             tx.object('0x6'), // clock
         ],
     });
