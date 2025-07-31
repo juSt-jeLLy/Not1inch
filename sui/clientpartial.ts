@@ -27,57 +27,79 @@ const RESOLVER_CANCELLATION_DURATION_MS = 30 * 1000; // 30 seconds after finalit
 const MAKER_CANCELLATION_DURATION_MS = 60 * 1000; // 60 seconds after finality lock
 const PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS = 15 * 1000; // 15 seconds after exclusive unlock expires
 
-// --- Helper for converting hex string to u8 vector for Move ---
+// Helper function to replicate Move contract's _isValidPartialFill logic for index calculation
+export function calculateExpectedSecretIndex(
+    totalOrderAmount: number,
+    remainingAmount: number,
+    fillAmount: number,
+    partsCount: number
+): number {
+    const currentFilledAmount = totalOrderAmount - remainingAmount;
+    const newFilledAmount = currentFilledAmount + fillAmount;
+
+    // the core logic from Move contract's fill_order_partial for expected_index
+    const targetPercentageNumerator = newFilledAmount * (partsCount + 1);
+    const targetPercentageDenominator = totalOrderAmount;
+
+    let expectedIndex = Math.floor(targetPercentageNumerator / targetPercentageDenominator); // Using Math.floor for integer division
+
+    if (targetPercentageNumerator % targetPercentageDenominator !== 0) {
+        expectedIndex = expectedIndex + 1;
+    }
+    return expectedIndex;
+}
+
+// // --- Helper for converting hex string to u8 vector for Move ---
 function hexToU8Vector(hexString: string): number[] {
     return Array.from(Buffer.from(hexString.slice(2), 'hex'));
 }
 
-// --- MERKLE DATA GENERATION USING @openzeppelin/merkle-tree ---
-function generateMerkleData(partsCount: number, secretPreimageBase: string) {
-    // 1. Generate N+1 secrets and their hashes (leaves)
-    const secretPreimages: string[] = [];
-    const secretHashes: string[] = []; // Hex strings of the hashes
+// // --- MERKLE DATA GENERATION USING @openzeppelin/merkle-tree ---
+// function generateMerkleData(partsCount: number, secretPreimageBase: string) {
+//     // 1. Generate N+1 secrets and their hashes (leaves)
+//     const secretPreimages: string[] = [];
+//     const secretHashes: string[] = []; // Hex strings of the hashes
 
-    for (let i = 0; i <= partsCount; i++) {
-        const secret = `${secretPreimageBase}_part_${i}`; // Generate a unique secret for each part
-        secretPreimages.push(secret);
-        secretHashes.push(keccak256(toUtf8Bytes(secret))); // Hash the secret
-    }
+//     for (let i = 0; i <= partsCount; i++) {
+//         const secret = `${secretPreimageBase}_part_${i}`; // Generate a unique secret for each part
+//         secretPreimages.push(secret);
+//         secretHashes.push(keccak256(toUtf8Bytes(secret))); // Hash the secret
+//     }
 
-    // 2. Prepare values for OpenZeppelin Merkle Tree
-    // Each value will be an array containing a single 'bytes32' element (the secret hash)
-    const ozMerkleValues = secretHashes.map(hash => [hash]);
+//     // 2. Prepare values for OpenZeppelin Merkle Tree
+//     // Each value will be an array containing a single 'bytes32' element (the secret hash)
+//     const ozMerkleValues = secretHashes.map(hash => [hash]);
 
-    // 3. Build the Merkle Tree
-    // The types must match the structure of each 'value' array.
-    // Since each 'value' is `[hash]`, the type is `["bytes32"]`.
-    const tree = StandardMerkleTree.of(ozMerkleValues, ["bytes32"]);
+//     // 3. Build the Merkle Tree
+//     // The types must match the structure of each 'value' array.
+//     // Since each 'value' is `[hash]`, the type is `["bytes32"]`.
+//     const tree = StandardMerkleTree.of(ozMerkleValues, ["bytes32"]);
 
-    // 4. Get the root (as a hex string from OpenZeppelin library)
-    const merkleRootHex = tree.root;
+//     // 4. Get the root (as a hex string from OpenZeppelin library)
+//     const merkleRootHex = tree.root;
 
-    // 5. Convert root to u8 vector for Move contract
-    const merkleRootU8 = hexToU8Vector(merkleRootHex);
+//     // 5. Convert root to u8 vector for Move contract
+//     const merkleRootU8 = hexToU8Vector(merkleRootHex);
 
-    // This function now returns a helper to generate proofs on demand
-    return {
-        secretPreimages, // Store the original preimages
-        merkleRoot: merkleRootU8, // The root to send to `partial_announce_order`
-        // A helper function to get a proof for a specific index
-        getProofForIndex: (index: number) => {
-            // OpenZeppelin library gives proof as an array of hex strings
-            const proofHex: string[] = tree.getProof(ozMerkleValues[index]);
-            // Convert each proof hash to u8 vector for Move
-            return proofHex.map(hex => hexToU8Vector(hex));
-        },
-        // Get the specific hash (leaf) for an index
-        getLeafHashForIndex: (index: number) => {
-            const leafHashHex = secretHashes[index];
-            return hexToU8Vector(leafHashHex);
-        }
-    };
-}
-// --- END MERKLE DATA GENERATION ---
+//     // This function now returns a helper to generate proofs on demand
+//     return {
+//         secretPreimages, // Store the original preimages
+//         merkleRoot: merkleRootU8, // The root to send to `partial_announce_order`
+//         // A helper function to get a proof for a specific index
+//         getProofForIndex: (index: number) => {
+//             // OpenZeppelin library gives proof as an array of hex strings
+//             const proofHex: string[] = tree.getProof(ozMerkleValues[index]);
+//             // Convert each proof hash to u8 vector for Move
+//             return proofHex.map(hex => hexToU8Vector(hex));
+//         },
+//         // Get the specific hash (leaf) for an index
+//         getLeafHashForIndex: (index: number) => {
+//             const leafHashHex = secretHashes[index];
+//             return hexToU8Vector(leafHashHex);
+//         }
+//     };
+// }
+
 
 
 // --- ANNOUNCE ORDER (STANDARD - FOR FULL FILLS) ---
@@ -445,10 +467,9 @@ export async function auctionTickpartial(orderId: string): Promise<number> {
 //     return { orderId, merkleData: generateMerkleData(partsCount, secretPreimageBase) }; // Re-generate to get access to getProofForIndex
 // }
 
-export async function partialAnnounceOrder(totalAmount: number, partsCount: number, secretPreimageBase: string) {
+export async function partialAnnounceOrder(totalAmount: number, partsCount: number, merkleRoot: string) {
     const tx = new Transaction();
-    const merkleData = generateMerkleData(partsCount, secretPreimageBase);
-    const { merkleRoot } = merkleData;
+   
 
     tx.moveCall({
         target: `${SUI_PACKAGE_ID}::htlc::partial_announce_order`,
@@ -459,7 +480,7 @@ export async function partialAnnounceOrder(totalAmount: number, partsCount: numb
             tx.pure.u64(900_000_000),   // reserve_price
             tx.pure.u64(60 * 1000),     // duration_ms
             tx.pure.u64(partsCount),
-            tx.pure.vector('u8', merkleRoot),
+            tx.pure.vector('u8', hexToU8Vector(merkleRoot)), 
             tx.object('0x6'), // clock
         ],
     });
@@ -467,22 +488,19 @@ export async function partialAnnounceOrder(totalAmount: number, partsCount: numb
     const announceRes = await suiClient.signAndExecuteTransaction({
         signer: suiKeypairUser,
         transaction: tx,
-        options: { showEffects: true, showObjectChanges: true },
+        options: { showEffects: true, showObjectChanges: true, showEvents: true },
     });
 
     console.log('partial_announce_order result:', announceRes);
     const orderId = announceRes.objectChanges?.find(change => change.type === 'created')?.objectId;
-
-    return { orderId, merkleData };
+    const evt = announceRes.events?.find(e => e.type.endsWith('PartialOrderAnnouncedEvent'));
+    return { orderId};
 }
 
 
-export async function fillOrderPartial(orderId: string, fillAmount: number, merkleData: ReturnType<typeof generateMerkleData>, targetSecretIndex: number) {
+export async function fillOrderPartial(orderId: string, fillAmount: number, targetSecretIndex: number, targetSecretHash : string) {
     const tx = new Transaction();
-
-    const targetSecretHash = merkleData.getLeafHashForIndex(targetSecretIndex);
-    const merkleProof = merkleData.getProofForIndex(targetSecretIndex);
-
+    const tgHash= hexToU8Vector(targetSecretHash);
     tx.moveCall({
         target: `${SUI_PACKAGE_ID}::htlc::fill_order_partial`,
         typeArguments: ['0x2::sui::SUI'],
@@ -490,12 +508,8 @@ export async function fillOrderPartial(orderId: string, fillAmount: number, merk
             tx.object(orderId),
             tx.pure.u64(fillAmount),
             tx.pure.u64(1_000_000_000), // bid_price - Set to start_price or higher
-            tx.pure.vector('u8', targetSecretHash),
+            tx.pure.vector('u8', tgHash),
             tx.pure.u64(targetSecretIndex),
-            tx.makeMoveVec({
-                elements: merkleProof.map(arr => tx.pure.vector('u8', arr)),
-                type: 'vector<u8>',
-            }),
             tx.object('0x6'), // clock
         ],
     });

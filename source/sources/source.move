@@ -33,6 +33,7 @@ module sui_htlc_contract::htlc {
     const E_NOT_RESOLVER: u64 = 19; // Used for HTLC cancellation
     const E_NOT_MAKER: u64 = 20; // Used for HTLC cancellation
     const E_NOT_SRC: u64 = 21; // Used for HTLC cancellation
+    const E_MISMATCH_SECRET_COUNT: u64 = 22; // Used for partial fill secret index mismatch
 
     // Order status constants
     const STATUS_ANNOUNCED: u8 = 0;
@@ -202,6 +203,23 @@ module sui_htlc_contract::htlc {
 
     public entry fun auction_tick<T>(
         order: &mut Order<T>,
+        clock: &Clock,
+        _ctx: &mut TxContext,
+    ) {
+        let now = clock::timestamp_ms(clock);
+        let elapsed = if (now > order.start_time) { now - order.start_time } else { 0 };
+        let price_diff = if (elapsed >= order.duration_ms) {
+            order.start_price - order.reserve_price
+        } else {
+            (order.start_price - order.reserve_price) * elapsed / order.duration_ms
+        };
+        let current_price = order.start_price - price_diff;
+        event::emit(AuctionTickEvent { order_id: object::id(order), current_price });
+    }
+
+    
+    public entry fun partial_auction_tick<T>(
+        order: &mut PartialOrder<T>,
         clock: &Clock,
         _ctx: &mut TxContext,
     ) {
@@ -641,7 +659,7 @@ internal_create_htlc_escrow(
         bid_price: u64,
         target_secret_hash: vector<u8>,
         expected_secret_index: u64,
-        merkle_proof: vector<vector<u8>>,
+        // merkle_proof: vector<vector<u8>>,
         clock: &Clock,
         ctx: &mut TxContext,
     ) {
@@ -659,11 +677,19 @@ internal_create_htlc_escrow(
         };
         let current_price = order.start_price - price_diff;
         assert!(bid_price >= current_price, E_PRICE_TOO_LOW);
-
         assert!(fill_amount <= order.remaining, E_INSUFFICIENT_REMAINING);
 
+        // _isValidPartialFill logic 
+        let current_filled_amount= order.total_amount - order.remaining;
+        let new_filled_amount = current_filled_amount + fill_amount;
+        let target_percentage_numerator = new_filled_amount * (order.parts_count + 1);
+        let target_percentage_denominator = order.total_amount;
+        let mut expected_index = target_percentage_numerator / target_percentage_denominator;
+        if (target_percentage_numerator % target_percentage_denominator != 0) {
+        expected_index = expected_index + 1;
+        };
+        assert!(expected_index == expected_secret_index, E_MISMATCH_SECRET_COUNT);
         // assert!(verify_merkle_proof(order.merkle_root, target_secret_hash, expected_secret_index, merkle_proof), E_INVALID_MERKLE_PROOF);
-
         assert!(expected_secret_index < vector::length(&order.filled_parts_bitmap), E_INVALID_SECRET);
         assert!(!*vector::borrow(&order.filled_parts_bitmap, expected_secret_index), E_SECRET_INDEX_USED);
 
@@ -705,11 +731,6 @@ internal_create_htlc_escrow(
         ctx: &mut TxContext,
     ) { 
         assert!(tx_context::sender(ctx) == order.maker, E_NOT_MAKER);
-
-        // TODO: Add robust checks here to ensure this secret_hash and index
-        // corresponds to a filled portion by resolver_address in the order.fills vector.
-        // For hackathon, this is a known simplification.
-
         internal_create_htlc_escrow(
             coins,
             coin::zero<0x2::sui::SUI>(ctx),
