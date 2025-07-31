@@ -2,7 +2,7 @@ import 'dotenv/config'
 import {expect, jest} from '@jest/globals'
 
 import {CreateServerReturnType} from 'prool'
-import {auctionTickpartial,fillOrderPartial,createHTLCSrcPartial, addSafetyDeposit,partialAnnounceOrder, claimHTLCsrcpartial  } from '../sui/clientpartial';
+import {auctionTickpartial,fillOrderPartial,createHTLCSrcPartial, addSafetyDeposit,partialAnnounceOrder, claimHTLCsrcpartial, calculateExpectedSecretIndex } from '../sui/clientpartial';
 import Sdk from '@1inch/cross-chain-sdk'
 import {
     computeAddress,
@@ -22,6 +22,8 @@ import {Resolver} from './resolversui'
 import {EscrowFactory} from './escrow-factory'
 import factoryContract from '../dist/contracts/TestEscrowFactory.sol/TestEscrowFactory.json'
 import resolverContract from '../dist/contracts/Resolver.sol/Resolver.json'
+import {MerkleTree} from 'merkletreejs'
+import { sha256 } from 'ethers';
 
 
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
@@ -116,14 +118,19 @@ describe('Resolving example', () => {
             const secrets = Array.from({length: 11}).map(() => uint8ArrayToHex(randomBytes(32))) // note: use crypto secure random number in the real world
             const secretHashes = secrets.map((s) => Sdk.HashLock.hashSecret(s))
             const leaves = Sdk.HashLock.getMerkleLeaves(secrets)
+            const parts= Sdk.HashLock.forMultipleFills(leaves).getPartsCount();
             const hashLock = Sdk.HashLock.forMultipleFills(leaves)
+
+            //Merkle Tree
+            const tree= new MerkleTree(leaves, sha256)
+            const root = tree.getRoot().toString('hex')
+            console.log('Merkle Root:', root);
+
             const hash = hashLock.toString();
             console.log('hashLock:', hashLock);
             const totalOrderAmount = 100_000_000;
-            const secret = secrets[10]
-            
-
-
+            let remainingAmount = 100_000_000;
+            // const secret = secrets[10]
             const idx = Number((BigInt(secrets.length - 1)))
 
             // user craetes order on the sui chain
@@ -131,7 +138,7 @@ describe('Resolving example', () => {
 
             console.log("user announcing order on Sui chain ")
 
-            const { orderId: partialOrderId, merkleData } = await partialAnnounceOrder(totalOrderAmount,idx,hash)
+            const { orderId: partialOrderId} = await partialAnnounceOrder(totalOrderAmount,idx,root)
             
             console.log("Partial Order Announced ID:", partialOrderId);
 
@@ -139,35 +146,30 @@ describe('Resolving example', () => {
                 throw new Error('Partial Order ID is undefined');
             }
 
-
-
-
             console.log("DUCH AUCTION STARTED Sui chain ")
             const duchAuction = await auctionTickpartial(partialOrderId)
             console.log("Auction ticked successfully. Current price:", duchAuction);  
 
-            // Note: Partial orders don't support auction ticking
-            // console.log("DUCH AUCTION STARTED Sui chain ")
-            // const duchAuction = await auctionTick(partialOrderId)
-            // console.log("Auction ticked successfully. Current price:", duchAuction);
-
             //resolver fills the order
             console.log("resolver fill order on Sui chain ")
             const fillAmount1 = totalOrderAmount / idx;
-            const targetIndex1 = 10;
-
-
-            const fill_order_partial = await fillOrderPartial(partialOrderId, fillAmount1, merkleData, targetIndex1)
-
+            // const targetIndex1 = 10;
+            const expectedIndex = calculateExpectedSecretIndex(totalOrderAmount, remainingAmount,fillAmount1, idx);
+            const targetSecretHash = secretHashes[expectedIndex];
+            const fill_order_partial = await fillOrderPartial(partialOrderId, fillAmount1, expectedIndex,targetSecretHash);
+            if (!fill_order_partial) {
+                throw new Error('Fill order partial is undefined');
+            }
             console.log("order filled on Sui chain ")
-
+            remainingAmount -= fillAmount1;
+            const secret = secrets[expectedIndex];
 
 
 
             // create HTLCsrc on Sui chain
             console.log("create HTLCsrc on Sui chain ")
 
-            const htlcSrc = await createHTLCSrcPartial(partialOrderId,hash, suiAddressResolver,targetIndex1)
+            const htlcSrc = await createHTLCSrcPartial(partialOrderId,hash, suiAddressResolver,expectedIndex)
             if (!htlcSrc) throw new Error('htlcSrc is undefined');
             const htlcId = htlcSrc.toString();
             if (!htlcId) throw new Error('htlcId is undefined');
