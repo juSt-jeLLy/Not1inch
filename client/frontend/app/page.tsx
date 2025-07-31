@@ -14,8 +14,9 @@ import { randomBytes, Result } from "ethers";
 import { SDK, HashLock } from "@1inch/cross-chain-sdk";
 import { keccak256, toUtf8Bytes } from "ethers";
 import {auctionTick, fillStandardOrder, addSafetyDeposit, announceStandardOrder} from '../../../sui/clientpartial'
-import { createHTLCSrc } from "./func/suitoevm";
+
 import {FINALITY_LOCK_DURATION_MS, RESOLVER_CANCELLATION_DURATION_MS, RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS, MAKER_CANCELLATION_DURATION_MS, PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS} from "./func/suitoevm"
+import { chang } from "viem/chains";
 const SUI_PACKAGE_ID="0x14e9f86c5e966674e6dbb28545bbff2052e916d93daba5729dbc475b1b336bb4"
 const resolverAddress="0x8acfda09209247fd73805b2e2fce19d1400d148ea38bdb9237f15925593eff27"
 const tokens = [
@@ -61,8 +62,20 @@ const [lastEditedField, setLastEditedField] = useState('from');
 const currentAccount = useCurrentAccount();
 const isSuiWalletConnected = !!currentAccount;
 const suiClient = useSuiClient();
-const { mutate: signAndExecute} = useSignAndExecuteTransaction();
-const { mutateAsync: signTransaction } = useSignTransaction();
+const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
+		execute: async ({ bytes, signature }) =>
+			await suiClient.executeTransactionBlock({
+				transactionBlock: bytes,
+				signature,
+				options: {
+					// Raw effects are required so the effects can be reported back to the wallet
+					showRawEffects: true,
+					// Select additional data to return
+					showObjectChanges: true,
+				},
+			}),
+	});
+
 
 
 // ETH wallet state from AppKit
@@ -151,99 +164,133 @@ const handleSwapNow = async () => {
       name: fromToken.name,
       fullName: fromToken.fullName,
       network: fromToken.network,
-      amount: fromAmount
+      amount: fromAmount,
     },
     toToken: {
       id: toToken.id,
       name: toToken.name,
       fullName: toToken.fullName,
       network: toToken.network,
-      amount: toAmount
+      amount: toAmount,
     },
     receivingAddress: receivingAddress,
     exchangeRate: getCurrentRate(),
     walletConnected: {
       sui: isSuiWalletConnected ? currentAccount?.address : null,
-      arbitrum: isEthConnected ? ethAddress : null
+      arbitrum: isEthConnected ? ethAddress : null,
     },
     timestamp: new Date().toISOString(),
-    rateType: selectedRate
+    rateType: selectedRate,
   };
-  console.log('Swap Data:', swapData);
-  const order = await suiClient.getObject({ id: '0x0d87b0e94a6fc1d07203a29deb5d67facb0e551808b5886959b29bfcbb71c57d' });
+
+  console.log("Swap Data:", swapData);
+
+  const order = await suiClient.getObject({
+    id: "0x0d87b0e94a6fc1d07203a29deb5d67facb0e551808b5886959b29bfcbb71c57d",
+  });
   console.log("Order Details:", order);
+
+  // Step 1: Announce Order
   const txAnnounceOrder = new Transaction();
-  const secret = uint8ArrayToHex(randomBytes(32))
+  const secret = uint8ArrayToHex(randomBytes(32));
   const hashLock = HashLock.forSingleFill(secret);
-  console.log('hashLock:', hashLock);
   const hash = hashLock.toString();
   const secretHash = hexToU8Vector(keccak256(toUtf8Bytes(hash)));
+
   txAnnounceOrder.moveCall({
-        target: `${SUI_PACKAGE_ID}::htlc::announce_order`,
-        typeArguments: ['0x2::sui::SUI'],
-        arguments: [
-            txAnnounceOrder.pure.vector('u8', secretHash),
-            txAnnounceOrder.pure.u64(1_000_000_0), // start_price
-            txAnnounceOrder.pure.u64(900_000_0), // reserve_price
-            txAnnounceOrder.pure.u64(60 * 1000 * 50), // duration_ms
-            txAnnounceOrder.object('0x6'), // clock
-        ],
-    });
+    target: `${SUI_PACKAGE_ID}::htlc::announce_order`,
+    typeArguments: ["0x2::sui::SUI"],
+    arguments: [
+      txAnnounceOrder.pure.vector("u8", secretHash),
+      txAnnounceOrder.pure.u64(1_000_000_0),
+      txAnnounceOrder.pure.u64(900_000_0),
+      txAnnounceOrder.pure.u64(60 * 1000 * 50),
+      txAnnounceOrder.object("0x6"), // clock
+    ],
+  });
 
-     signAndExecute(
-          {
-            transaction: txAnnounceOrder,
-          },
-         {
-          onSuccess: (result)=>{
-            console.log("Announce Order Success:", result);
-            alert('Order announced successfully!');
-           
-          }
-         }          
-      )
-     
-    // const orderId = res.objectChanges?.find(change => change.type === 'created')?.objectId;
-    const orderId= "0x0d87b0e94a6fc1d07203a29deb5d67facb0e551808b5886959b29bfcbb71c57d";
-    const auctionTickRes= await auctionTick(orderId)
-    console.log("Auction Tick Result:", auctionTickRes);
-    const fillOrderRes = await fillStandardOrder(orderId)
-    console.log("order filled on Sui chain", fillOrderRes)
+  const createdOrderId = await new Promise<string | undefined>((resolve, reject) => {
+    signAndExecuteTransaction(
+      {
+        transaction: txAnnounceOrder,
+        chain: "sui:testnet",
+      },
+      {
+        onSuccess: (result) => {
+          const created = result.objectChanges?.find(
+            (change) => change.type === "created"
+          )?.objectId;
+          console.log("Order ID:", created);
+          resolve(created);
+        },
+        onError: (err) => {
+          console.error("Failed to announce order:", err);
+          reject(err);
+        },
+      }
+    );
+  });
 
-    const tx = new Transaction();
-        const [htlcCoin] = tx.splitCoins(tx.gas, [
-            tx.pure.u64(50_000_000)
-        ]);
-    
-        tx.moveCall({
-            target: `${SUI_PACKAGE_ID}::htlc::create_htlc_escrow_src`,
-            typeArguments: ['0x2::sui::SUI'],
-            arguments: [
-                tx.object(orderId),
-                tx.makeMoveVec({ elements: [tx.object(htlcCoin)] }),
-                tx.pure.vector('u8', secretHash),
-                tx.pure.u64(FINALITY_LOCK_DURATION_MS),
-                tx.pure.u64(RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS),
-                tx.pure.u64(RESOLVER_CANCELLATION_DURATION_MS),
-                tx.pure.u64(MAKER_CANCELLATION_DURATION_MS),
-                tx.pure.u64(PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS),
-                tx.pure.address(resolverAddress),
-                tx.object('0x6'), // clock
-            ],
-        });
-        signAndExecute(
-          {
-            transaction: tx,
-          },
-          {
-            onSuccess: (result) => {
-              console.log("HTLC Source Created:", result);
-              alert('HTLC Source created successfully!');
-            }
-          }
-        )
+  if (!createdOrderId) {
+    alert("Failed to create order. Please try again.");
+    return;
+  }
 
-  alert(`Swapping ${fromAmount} ${fromToken.name} for ${toAmount} ${toToken.name}`);
+  // Step 2: Auction Tick
+  const auctionTickRes = await auctionTick(createdOrderId);
+  console.log("Auction Tick Result:", auctionTickRes);
+
+  // Step 3: Fill Order
+  const fillOrderRes = await fillStandardOrder(createdOrderId);
+  console.log("Order filled on Sui chain", fillOrderRes);
+
+  // Step 4: Create HTLC
+  const tx = new Transaction();
+  const [htlcCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(50_000_000)]);
+
+  tx.moveCall({
+    target: `${SUI_PACKAGE_ID}::htlc::create_htlc_escrow_src`,
+    typeArguments: ["0x2::sui::SUI"],
+    arguments: [
+      tx.object(createdOrderId),
+      tx.makeMoveVec({ elements: [tx.object(htlcCoin)] }),
+      tx.pure.vector("u8", secretHash),
+      tx.pure.u64(FINALITY_LOCK_DURATION_MS),
+      tx.pure.u64(RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS),
+      tx.pure.u64(RESOLVER_CANCELLATION_DURATION_MS),
+      tx.pure.u64(MAKER_CANCELLATION_DURATION_MS),
+      tx.pure.u64(PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS),
+      tx.pure.address(resolverAddress),
+      tx.object("0x6"), // clock
+    ],
+  });
+
+  const htlcId = await new Promise<string | undefined>((resolve, reject) => {
+    signAndExecuteTransaction(
+      {
+        transaction: tx,
+        chain: "sui:testnet",
+      },
+      {
+        onSuccess: (result) => {
+          const created = result.objectChanges?.find(
+            (change) => change.type === "created"
+          )?.objectId;
+          console.log("HTLC Source Created:", created);
+          alert("HTLC Source created successfully!");
+          resolve(created);
+        },
+        onError: (err) => {
+          console.error("Failed to create HTLC:", err);
+          reject(err);
+        },
+      }
+    );
+  });
+
+  alert(
+    `Swapping ${fromAmount} ${fromToken.name} for ${toAmount} ${toToken.name}`
+  );
 };
 
 
