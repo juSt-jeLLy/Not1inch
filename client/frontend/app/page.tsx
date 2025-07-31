@@ -170,7 +170,8 @@ const handleSwapNow = async () => {
     rateType: selectedRate
   };
   console.log('Swap Data:', swapData);
-  
+  const order = await suiClient.getObject({ id: '0x0d87b0e94a6fc1d07203a29deb5d67facb0e551808b5886959b29bfcbb71c57d' });
+  console.log("Order Details:", order);
   const txAnnounceOrder = new Transaction();
   const secret = uint8ArrayToHex(randomBytes(32))
   const hashLock = HashLock.forSingleFill(secret);
