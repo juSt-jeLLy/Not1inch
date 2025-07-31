@@ -217,6 +217,23 @@ module sui_htlc_contract::htlc {
         event::emit(AuctionTickEvent { order_id: object::id(order), current_price });
     }
 
+    
+    public entry fun partial_auction_tick<T>(
+        order: &mut PartialOrder<T>,
+        clock: &Clock,
+        _ctx: &mut TxContext,
+    ) {
+        let now = clock::timestamp_ms(clock);
+        let elapsed = if (now > order.start_time) { now - order.start_time } else { 0 };
+        let price_diff = if (elapsed >= order.duration_ms) {
+            order.start_price - order.reserve_price
+        } else {
+            (order.start_price - order.reserve_price) * elapsed / order.duration_ms
+        };
+        let current_price = order.start_price - price_diff;
+        event::emit(AuctionTickEvent { order_id: object::id(order), current_price });
+    }
+
     public entry fun fill_order<T>(
         order: &mut Order<T>,
         bid_price: u64,
@@ -667,7 +684,7 @@ internal_create_htlc_escrow(
         let new_filled_amount = current_filled_amount + fill_amount;
         let target_percentage_numerator = new_filled_amount * (order.parts_count + 1);
         let target_percentage_denominator = order.total_amount;
-        let expected_index = target_percentage_numerator / target_percentage_denominator;
+        let mut expected_index = target_percentage_numerator / target_percentage_denominator;
         if (target_percentage_numerator % target_percentage_denominator != 0) {
         expected_index = expected_index + 1;
         };
