@@ -54,53 +54,6 @@ function hexToU8Vector(hexString: string): number[] {
     return Array.from(Buffer.from(hexString.slice(2), 'hex'));
 }
 
-// // --- MERKLE DATA GENERATION USING @openzeppelin/merkle-tree ---
-// function generateMerkleData(partsCount: number, secretPreimageBase: string) {
-//     // 1. Generate N+1 secrets and their hashes (leaves)
-//     const secretPreimages: string[] = [];
-//     const secretHashes: string[] = []; // Hex strings of the hashes
-
-//     for (let i = 0; i <= partsCount; i++) {
-//         const secret = `${secretPreimageBase}_part_${i}`; // Generate a unique secret for each part
-//         secretPreimages.push(secret);
-//         secretHashes.push(keccak256(toUtf8Bytes(secret))); // Hash the secret
-//     }
-
-//     // 2. Prepare values for OpenZeppelin Merkle Tree
-//     // Each value will be an array containing a single 'bytes32' element (the secret hash)
-//     const ozMerkleValues = secretHashes.map(hash => [hash]);
-
-//     // 3. Build the Merkle Tree
-//     // The types must match the structure of each 'value' array.
-//     // Since each 'value' is `[hash]`, the type is `["bytes32"]`.
-//     const tree = StandardMerkleTree.of(ozMerkleValues, ["bytes32"]);
-
-//     // 4. Get the root (as a hex string from OpenZeppelin library)
-//     const merkleRootHex = tree.root;
-
-//     // 5. Convert root to u8 vector for Move contract
-//     const merkleRootU8 = hexToU8Vector(merkleRootHex);
-
-//     // This function now returns a helper to generate proofs on demand
-//     return {
-//         secretPreimages, // Store the original preimages
-//         merkleRoot: merkleRootU8, // The root to send to `partial_announce_order`
-//         // A helper function to get a proof for a specific index
-//         getProofForIndex: (index: number) => {
-//             // OpenZeppelin library gives proof as an array of hex strings
-//             const proofHex: string[] = tree.getProof(ozMerkleValues[index]);
-//             // Convert each proof hash to u8 vector for Move
-//             return proofHex.map(hex => hexToU8Vector(hex));
-//         },
-//         // Get the specific hash (leaf) for an index
-//         getLeafHashForIndex: (index: number) => {
-//             const leafHashHex = secretHashes[index];
-//             return hexToU8Vector(leafHashHex);
-//         }
-//     };
-// }
-
-
 
 // --- ANNOUNCE ORDER (STANDARD - FOR FULL FILLS) ---
 export async function announceStandardOrder(secretPreimage: string) {
@@ -113,7 +66,7 @@ export async function announceStandardOrder(secretPreimage: string) {
         arguments: [
             txAnnounceOrder.pure.vector('u8', secretHash),
             txAnnounceOrder.pure.u64(1_000_000_0), // start_price
-            txAnnounceOrder.pure.u64(900_000_0), // reserve_price
+            txAnnounceOrder.pure.u64(900_000), // reserve_price
             txAnnounceOrder.pure.u64(60 * 1000 * 50), // duration_ms
             txAnnounceOrder.object('0x6'), // clock
         ],
@@ -363,8 +316,7 @@ export async function recoverHTLC(htlcId: string) {
 
 // --- ADD SAFETY DEPOSIT ---
 export async function addSafetyDeposit(
-    htlcId: string,
-    signerKeypair: Ed25519Keypair
+    htlcId: string
 ) {
     const tx = new Transaction();
     const [depositCoin] = tx.splitCoins(tx.gas, [
@@ -381,7 +333,7 @@ export async function addSafetyDeposit(
     });
 
     const result = await suiClient.signAndExecuteTransaction({
-        signer: signerKeypair,
+        signer: suiKeypairResolver,
         transaction: tx,
         options: {
             showEffects: true,

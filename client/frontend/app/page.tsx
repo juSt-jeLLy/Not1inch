@@ -28,8 +28,8 @@ const tokens = [
 
 // Fixed exchange rates
 const EXCHANGE_RATES = {
-'usdc-to-sui': 0.1,    // 1 USDC = 0.1 SUI
-'sui-to-usdc': 10      // 1 SUI = 10 USDC
+'usdc-to-sui': 1,    // 1 USDC = 0.1 SUI
+'sui-to-usdc': 1      // 1 SUI = 10 USDC
 };
 
 export default function Home() {

@@ -160,7 +160,7 @@ describe('Resolving example', () => {
 
             //resolver adds safety deposit
             console.log("resolver adds safety deposit on Sui chain ")
-            const addSafetydeposit = await addSafetyDeposit(htlcId, suiKeypairResolver)
+            const addSafetydeposit = await addSafetyDeposit(htlcId)
             console.log("safety deposit added on Sui chain ")
 
 
