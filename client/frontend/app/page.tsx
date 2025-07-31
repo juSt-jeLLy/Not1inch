@@ -7,16 +7,17 @@ import { useAppKitAccount } from '@reown/appkit/react';
 import { ArrowRightIcon, QrCodeIcon } from "@heroicons/react/24/outline";
 import Navbar from "./components/Navbar";
 import { Transaction } from "@mysten/sui/transactions";
-import { useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { useSignAndExecuteTransaction, useSignTransaction } from "@mysten/dapp-kit";
 import { useSuiClient } from "@mysten/dapp-kit";
 import {uint8ArrayToHex, UINT_40_MAX} from '@1inch/byte-utils'
-import { randomBytes } from "ethers";
+import { randomBytes, Result } from "ethers";
 import { SDK, HashLock } from "@1inch/cross-chain-sdk";
 import { keccak256, toUtf8Bytes } from "ethers";
-import {auctionTick, fillStandardOrder, addSafetyDeposit} from '../../../sui/clientpartial'
-
-const SUI_PACKAGE_ID="0xbcf8b75841071bccd3fb756bdeea315b6277591455761e79a12e74e74c89b69d"
-
+import {auctionTick, fillStandardOrder, addSafetyDeposit, announceStandardOrder} from '../../../sui/clientpartial'
+import { createHTLCSrc } from "./func/suitoevm";
+import {FINALITY_LOCK_DURATION_MS, RESOLVER_CANCELLATION_DURATION_MS, RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS, MAKER_CANCELLATION_DURATION_MS, PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS} from "./func/suitoevm"
+const SUI_PACKAGE_ID="0x14e9f86c5e966674e6dbb28545bbff2052e916d93daba5729dbc475b1b336bb4"
+const resolverAddress="0x8acfda09209247fd73805b2e2fce19d1400d148ea38bdb9237f15925593eff27"
 const tokens = [
 { 
   id: 'usdc', 
@@ -61,6 +62,7 @@ const currentAccount = useCurrentAccount();
 const isSuiWalletConnected = !!currentAccount;
 const suiClient = useSuiClient();
 const { mutate: signAndExecute} = useSignAndExecuteTransaction();
+const { mutateAsync: signTransaction } = useSignTransaction();
 
 
 // ETH wallet state from AppKit
@@ -195,19 +197,56 @@ const handleSwapNow = async () => {
           onSuccess: (result)=>{
             console.log("Announce Order Success:", result);
             alert('Order announced successfully!');
+           
           }
          }          
       )
+     
     // const orderId = res.objectChanges?.find(change => change.type === 'created')?.objectId;
-    const orderId= "test";
+    const orderId= "0x0d87b0e94a6fc1d07203a29deb5d67facb0e551808b5886959b29bfcbb71c57d";
     const auctionTickRes= await auctionTick(orderId)
     console.log("Auction Tick Result:", auctionTickRes);
     const fillOrderRes = await fillStandardOrder(orderId)
-    console.log("order filled on Sui chain", fillOrderRes);
+    console.log("order filled on Sui chain", fillOrderRes)
+
+    const tx = new Transaction();
+        const [htlcCoin] = tx.splitCoins(tx.gas, [
+            tx.pure.u64(50_000_000)
+        ]);
     
-  
+        tx.moveCall({
+            target: `${SUI_PACKAGE_ID}::htlc::create_htlc_escrow_src`,
+            typeArguments: ['0x2::sui::SUI'],
+            arguments: [
+                tx.object(orderId),
+                tx.makeMoveVec({ elements: [tx.object(htlcCoin)] }),
+                tx.pure.vector('u8', secretHash),
+                tx.pure.u64(FINALITY_LOCK_DURATION_MS),
+                tx.pure.u64(RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS),
+                tx.pure.u64(RESOLVER_CANCELLATION_DURATION_MS),
+                tx.pure.u64(MAKER_CANCELLATION_DURATION_MS),
+                tx.pure.u64(PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS),
+                tx.pure.address(resolverAddress),
+                tx.object('0x6'), // clock
+            ],
+        });
+        signAndExecute(
+          {
+            transaction: tx,
+          },
+          {
+            onSuccess: (result) => {
+              console.log("HTLC Source Created:", result);
+              alert('HTLC Source created successfully!');
+            }
+          }
+        )
+
   alert(`Swapping ${fromAmount} ${fromToken.name} for ${toAmount} ${toToken.name}`);
 };
+
+
+
 
 return (
   <div className="min-h-screen bg-gradient-to-br from-[#1a1a1a] via-[#242424] to-[#1a1a1a] text-white font-mono">
