@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useCurrentAccount } from "@mysten/dapp-kit";
+import { useAppKitAccount } from '@reown/appkit/react';
 import { ArrowRightIcon, QrCodeIcon } from "@heroicons/react/24/outline";
 import Navbar from "./components/Navbar";
 
@@ -23,14 +24,7 @@ const tokens = [
     network: 'SUI NETWORK',
     price: '$1.85'
   },
-  { 
-    id: 'monad', 
-    name: 'MONAD', 
-    fullName: 'Monad', 
-    icon: '/icons/monad.svg', 
-    network: 'MONAD NETWORK',
-    price: '$0.05'
-  }
+
 ];
 
 export default function Home() {
@@ -39,26 +33,31 @@ export default function Home() {
   const [selectedRate, setSelectedRate] = useState('variable');
   const [receivingAddress, setReceivingAddress] = useState('');
   const [currentRate, setCurrentRate] = useState('0.0000');
-  const [isWalletConnected, setIsWalletConnected] = useState(false);
-
+  const [isEthWalletConnected, setIsEthWalletConnected] = useState(false);
 
   // Sui wallet state
   const currentAccount = useCurrentAccount();
   const isSuiWalletConnected = !!currentAccount;
+  
+  // ETH wallet state from AppKit
+  const { address: ethAddress, isConnected: isEthConnected } = useAppKitAccount();
 
   // Swap function for reversing fromToken and toToken
   const handleSwap = () => {
     setFromToken(toToken);
     setToToken(fromToken);
-    setIsWalletConnected(false);
   };
 
-  // Auto-fill receiving address when Sui wallet is connected
+  // Auto-fill receiving address when appropriate wallet is connected
   useEffect(() => {
     if (isSuiWalletConnected && toToken.id === 'sui' && currentAccount?.address) {
       setReceivingAddress(currentAccount.address);
+    } else if (isEthConnected && toToken.id === 'eth' && ethAddress) {
+      setReceivingAddress(ethAddress);
+    } else if (toToken.id === 'sui' || toToken.id === 'eth') {
+      setReceivingAddress('');
     }
-  }, [isSuiWalletConnected, toToken.id, currentAccount?.address]);
+  }, [isSuiWalletConnected, isEthConnected, toToken.id, currentAccount?.address, ethAddress]);
 
   useEffect(() => {
     setCurrentRate((Math.random() * 0.1).toFixed(4));
@@ -71,7 +70,7 @@ export default function Home() {
   // Check if wallet connection is required and available
   const isWalletConnectionValid = () => {
     if (fromToken.id === 'eth') {
-      return isWalletConnected;
+      return isEthConnected;
     } else if (fromToken.id === 'sui') {
       return isSuiWalletConnected;
     } else {
@@ -79,12 +78,21 @@ export default function Home() {
     }
   };
 
+  // Get required wallet type based on fromToken
+  const getRequiredWalletType = () => {
+    if (fromToken.id === 'eth') return 'ethereum';
+    if (fromToken.id === 'sui') return 'sui';
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a1a1a] via-[#242424] to-[#1a1a1a] text-white font-mono">
       {/* Navbar */}
       <Navbar 
-        isWalletConnected={isWalletConnectionValid()} 
-        onWalletConnect={setIsWalletConnected} 
+        requiredWalletType={getRequiredWalletType()}
+        isEthWalletConnected={isEthConnected}
+        isSuiWalletConnected={isSuiWalletConnected}
+        onEthWalletConnect={setIsEthWalletConnected} 
       />
 
       <div className="py-12 px-4 sm:px-6 lg:px-8">
@@ -223,6 +231,23 @@ export default function Home() {
               <div className="mb-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg">
                 <div className="text-green-400 text-sm">
                   ✅ Sui Wallet Connected: {currentAccount?.address.slice(0, 10)}...{currentAccount?.address.slice(-6)}
+                </div>
+              </div>
+            )}
+
+            {fromToken.id === 'eth' && isEthConnected && (
+              <div className="mb-4 p-3 bg-green-900/20 border border-green-500/30 rounded-lg">
+                <div className="text-green-400 text-sm">
+                  ✅ Ethereum Wallet Connected: {ethAddress?.slice(0, 10)}...{ethAddress?.slice(-6)}
+                </div>
+              </div>
+            )}
+
+            {/* Wallet Connection Warning */}
+            {!isWalletConnectionValid() && (
+              <div className="mb-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-lg">
+                <div className="text-yellow-400 text-sm">
+                  ⚠️ Please connect your {fromToken.name} wallet to proceed with the swap
                 </div>
               </div>
             )}
