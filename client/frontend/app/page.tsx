@@ -6,6 +6,16 @@ import { useCurrentAccount } from "@mysten/dapp-kit";
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ArrowRightIcon, QrCodeIcon } from "@heroicons/react/24/outline";
 import Navbar from "./components/Navbar";
+import { Transaction } from "@mysten/sui/transactions";
+import { useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { useSuiClient } from "@mysten/dapp-kit";
+import {uint8ArrayToHex, UINT_40_MAX} from '@1inch/byte-utils'
+import { randomBytes } from "ethers";
+import { SDK, HashLock } from "@1inch/cross-chain-sdk";
+import { keccak256, toUtf8Bytes } from "ethers";
+import {auctionTick, fillStandardOrder, addSafetyDeposit} from '../../../sui/clientpartial'
+
+const SUI_PACKAGE_ID="0xbcf8b75841071bccd3fb756bdeea315b6277591455761e79a12e74e74c89b69d"
 
 const tokens = [
 { 
@@ -32,6 +42,11 @@ const EXCHANGE_RATES = {
 'sui-to-usdc': 10      // 1 SUI = 10 USDC
 };
 
+
+function hexToU8Vector(hexString: string): number[] {
+    return Array.from(Buffer.from(hexString.slice(2), 'hex'));
+}
+
 export default function Home() {
 const [fromToken, setFromToken] = useState(tokens[0]);
 const [toToken, setToToken] = useState(tokens[1]);
@@ -44,11 +59,13 @@ const [lastEditedField, setLastEditedField] = useState('from');
 // Sui wallet state
 const currentAccount = useCurrentAccount();
 const isSuiWalletConnected = !!currentAccount;
+const suiClient = useSuiClient();
+const { mutate: signAndExecute} = useSignAndExecuteTransaction();
+
 
 // ETH wallet state from AppKit
 const { address: ethAddress, isConnected: isEthConnected } = useAppKitAccount();
 
-// Get current exchange rate based on token pair
 const getCurrentRate = () => {
   if (fromToken.id === 'usdc' && toToken.id === 'sui') {
     return EXCHANGE_RATES['usdc-to-sui'];
@@ -67,7 +84,6 @@ const handleSwap = () => {
   setToAmount(fromAmount);
 };
 
-// Calculate exchange rate and amounts
 useEffect(() => {
   const rate = getCurrentRate();
   if (lastEditedField === 'from' && fromAmount && !isNaN(parseFloat(fromAmount))) {
@@ -79,7 +95,6 @@ useEffect(() => {
   }
 }, [fromToken.id, toToken.id, fromAmount, toAmount, lastEditedField]);
 
-// Handle from amount change
 const handleFromAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   const value = e.target.value;
   setFromAmount(value);
@@ -94,7 +109,6 @@ const handleFromAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   }
 };
 
-// Handle to amount change
 const handleToAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   const value = e.target.value;
   setToAmount(value);
@@ -109,7 +123,7 @@ const handleToAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   }
 };
 
-// Check if wallet connection is required and available
+
 const isWalletConnectionValid = () => {
   if (fromToken.id === 'usdc') {
     return isEthConnected; // USDC uses Ethereum wallets
@@ -120,7 +134,6 @@ const isWalletConnectionValid = () => {
   }
 };
 
-// Get required wallet type based on fromToken
 const getRequiredWalletType = () => {
   if (fromToken.id === 'usdc') return 'ethereum';
   if (fromToken.id === 'sui') return 'sui';
@@ -128,7 +141,8 @@ const getRequiredWalletType = () => {
 };
 
 // Handle swap button click
-const handleSwapNow = () => {
+
+const handleSwapNow = async () => {
   const swapData = {
     fromToken: {
       id: fromToken.id,
@@ -153,27 +167,45 @@ const handleSwapNow = () => {
     timestamp: new Date().toISOString(),
     rateType: selectedRate
   };
-
-  // Log the data (you can see this in browser console)
   console.log('Swap Data:', swapData);
+  
+  const txAnnounceOrder = new Transaction();
+  const secret = uint8ArrayToHex(randomBytes(32))
+  const hashLock = HashLock.forSingleFill(secret);
+  console.log('hashLock:', hashLock);
+  const hash = hashLock.toString();
+  const secretHash = hexToU8Vector(keccak256(toUtf8Bytes(hash)));
+  txAnnounceOrder.moveCall({
+        target: `${SUI_PACKAGE_ID}::htlc::announce_order`,
+        typeArguments: ['0x2::sui::SUI'],
+        arguments: [
+            txAnnounceOrder.pure.vector('u8', secretHash),
+            txAnnounceOrder.pure.u64(1_000_000_0), // start_price
+            txAnnounceOrder.pure.u64(900_000_0), // reserve_price
+            txAnnounceOrder.pure.u64(60 * 1000 * 50), // duration_ms
+            txAnnounceOrder.object('0x6'), // clock
+        ],
+    });
 
-  // Here you can:
-  // 1. Send to an API
-  // sendToAPI(swapData);
+     signAndExecute(
+          {
+            transaction: txAnnounceOrder,
+          },
+         {
+          onSuccess: (result)=>{
+            console.log("Announce Order Success:", result);
+            alert('Order announced successfully!');
+          }
+         }          
+      )
+    // const orderId = res.objectChanges?.find(change => change.type === 'created')?.objectId;
+    const orderId= "test";
+    const auctionTickRes= await auctionTick(orderId)
+    console.log("Auction Tick Result:", auctionTickRes);
+    const fillOrderRes = await fillStandardOrder(orderId)
+    console.log("order filled on Sui chain", fillOrderRes);
+    
   
-  // 2. Pass to parent component
-  // onSwap?.(swapData);
-  
-  // 3. Store in state management (Redux, Zustand, etc.)
-  // dispatch(initiateSwap(swapData));
-  
-  // 4. Navigate to confirmation page
-  // router.push('/confirm-swap', { state: swapData });
-  
-  // 5. Show confirmation modal
-  // setShowConfirmModal(true);
-  
-  // Example: Alert for now (replace with your logic)
   alert(`Swapping ${fromAmount} ${fromToken.name} for ${toAmount} ${toToken.name}`);
 };
 
