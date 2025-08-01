@@ -102,8 +102,7 @@ Core module: `sui_htlc_contract::htlc`
 
 ```bash
 cargo install --locked --git https://github.com/MystenLabs/sui.git --tag devnet sui
-
-
+```
 ### Installation
 
 ```bash
