@@ -36,7 +36,7 @@ The system relies on **Hashed Timelock Contracts (HTLCs)**. Funds are locked usi
 - Resolvers monitor and fill when price is acceptable.
 
 ### Code 
-For detailed implementation of how CCIP is integrated , please refer :
+For detailed implementation of Cross Chain Swap is integrated , please refer :
 
 [SUI Contract](https://github.com/juSt-jeLLy/Not1inch/blob/main/source/sources/source.move)
 
