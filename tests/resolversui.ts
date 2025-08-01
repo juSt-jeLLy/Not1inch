@@ -3,12 +3,56 @@ import Sdk from '@1inch/cross-chain-sdk'
 import Contract from '../dist/contracts/Resolver.sol/Resolver.json'
 
 export class Resolver {
-    private readonly iface = new Interface(Contract.abi)
+    private readonly iface: Interface
 
     constructor(
         public readonly srcAddress: string,
         public readonly dstAddress: string
-    ) {}
+    ) {
+        this.iface = this.createInterfaceWithFallback(Contract.abi)
+    }
+
+    private createInterfaceWithFallback(abi: any[]): Interface {
+        const hasSweep = abi.some(item => 
+            item.type === 'function' && item.name === 'sweep'
+        )
+
+        if (!hasSweep) {
+            console.warn('sweep function not found in ABI, adding manually')
+            const sweepABI = {
+                "type": "function",
+                "name": "sweep",
+                "inputs": [
+                    {"name": "token", "type": "address", "internalType": "address"},
+                    {"name": "to", "type": "address", "internalType": "address"}
+                ],
+                "outputs": [],
+                "stateMutability": "nonpayable"
+            }
+            abi = [...abi, sweepABI]
+        }
+
+        const hasArbitraryCalls = abi.some(item => 
+            item.type === 'function' && item.name === 'arbitraryCalls'
+        )
+
+        if (!hasArbitraryCalls) {
+            console.warn('arbitraryCalls function not found in ABI, adding manually')
+            const arbitraryCallsABI = {
+                "type": "function",
+                "name": "arbitraryCalls",
+                "inputs": [
+                    {"name": "targets", "type": "address[]", "internalType": "address[]"},
+                    {"name": "arguments", "type": "bytes[]", "internalType": "bytes[]"}
+                ],
+                "outputs": [],
+                "stateMutability": "nonpayable"
+            }
+            abi = [...abi, arbitraryCallsABI]
+        }
+
+        return new Interface(abi)
+    }
 
     public deploySrc(
         chainId: number,
@@ -48,7 +92,7 @@ export class Resolver {
             to: this.dstAddress,
             data: this.iface.encodeFunctionData('deployDst', [
                 immutables.build(),
-                cancellationTimestamp // ✅ Add the missing parameter
+                cancellationTimestamp
             ]),
             value: immutables.safetyDeposit
         }
@@ -65,7 +109,6 @@ export class Resolver {
             data: this.iface.encodeFunctionData('withdraw', [escrow.toString(), secret, immutables.build()])
         }
     }
- 
 
     public cancel(side: 'src' | 'dst', escrow: Sdk.Address, immutables: Sdk.Immutables): TransactionRequest {
         return {
@@ -74,18 +117,27 @@ export class Resolver {
         }
     }
 
-    public sweep(token: string, to: string): TransactionRequest {
+    // ✅ FIXED: Add side parameter to determine which contract to sweep from
+    public sweep(token: string, to: string, side: 'src' | 'dst' = 'dst'): TransactionRequest {
         return {
-            to: this.srcAddress,
+            to: side === 'src' ? this.srcAddress : this.dstAddress, // ✅ Use correct address based on side
             data: this.iface.encodeFunctionData('sweep', [token, to])
         }
     }
 
-    // ✅ Add method to handle arbitrary calls for approvals
     public arbitraryCalls(targets: string[], calldata: string[]): TransactionRequest {
         return {
             to: this.dstAddress,
             data: this.iface.encodeFunctionData('arbitraryCalls', [targets, calldata])
         }
+    }
+
+    // ✅ NEW: Convenience methods for specific side sweeping
+    public sweepSrc(token: string, to: string): TransactionRequest {
+        return this.sweep(token, to, 'src')
+    }
+
+    public sweepDst(token: string, to: string): TransactionRequest {
+        return this.sweep(token, to, 'dst')
     }
 }

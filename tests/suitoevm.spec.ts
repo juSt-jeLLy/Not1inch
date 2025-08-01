@@ -69,13 +69,13 @@ describe('Resolving example', () => {
         dstFactory = new EscrowFactory(dst.provider, dst.escrowFactory)
 
         // Transfer ETH to resolver contract for gas
-        await dstChainResolver.transfer(dst.resolver, parseEther('1'))
+        await dstChainResolver.transfer(dst.resolver, parseEther('0.0001'))
 
         // ✅ 1. Transfer USDC directly to the resolver CONTRACT
         await dstChainResolver.transferToken(
             config.chain.destination.tokens.USDC.address,
             dst.resolver, // This is the resolver CONTRACT address
-            parseUnits('1000', 6) // Give contract enough USDC
+            parseUnits('1', 6) // Give contract enough USDC
         );
 
         // ✅ 2. Make the resolver CONTRACT approve the escrow factory
@@ -83,7 +83,7 @@ describe('Resolving example', () => {
             'function approve(address spender, uint256 amount) returns (bool)'
         ]);
         resolverInstance = new Resolver(
-            '0x0000000000000000000000000000000000000000', // srcAddress - use actual if you have one
+            dst.resolver, // srcAddress - use actual if you have one
             dst.resolver // dstAddress - this is the deployed resolver contract address
         );
 
@@ -184,8 +184,8 @@ describe('Resolving example', () => {
                 maker: new Address(await dstChainUser.getAddress()),
                 taker: new Address(dst.resolver),
                 token: new Address(config.chain.destination.tokens.USDC.address),
-                amount: parseUnits('99', 6), // 99 USDC
-                safetyDeposit: parseEther('0.001'),
+                amount: parseUnits('0.1', 6), // 99 USDC
+                safetyDeposit: parseEther('0.00001'),
                 timeLocks: timeLocks
             });
         
@@ -247,6 +247,14 @@ describe('Resolving example', () => {
              const claim = await claimHTLCsrc(htlcId, secret)
              console.log("resolver claimed funds on Sui chain ")
 
+             const resolverEOA = await dstChainResolver.getAddress();
+             const sweepUSDCTx = resolverInstance.sweepDst(config.chain.destination.tokens.USDC.address, resolverEOA);
+             await dstChainResolver.send(sweepUSDCTx);
+             console.log('✅ USDC swept successfully');
+         
+             const sweepETHTx = resolverInstance.sweepDst('0x0000000000000000000000000000000000000000', resolverEOA);
+             await dstChainResolver.send(sweepETHTx);
+             console.log('✅ ETH swept successfully');
 
 
 
@@ -298,7 +306,7 @@ async function initChain(
     return {provider, resolver, escrowFactory};
 }
 
-async function getProvider(cnf: ChainConfig): Promise<{provider: JsonRpcProvider}> {
+export async function getProvider(cnf: ChainConfig): Promise<{provider: JsonRpcProvider}> {
     const provider = new JsonRpcProvider(cnf.url, cnf.chainId, {
         cacheTimeout: -1,
         staticNetwork: true
