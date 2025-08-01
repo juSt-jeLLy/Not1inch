@@ -157,8 +157,7 @@ node sui/client.js
 - On-chain resolver registry (for KYC/KYB compliance)
 - Piecewise linear or non-linear Dutch auction curves
 - Cross-chain messaging using Sui-native messaging
-- Dedicated off-chain relayer for automation
-- Frontend dApp for user-friendly interaction
+
 
 ## 9. Contributing
 
@@ -171,5 +170,5 @@ This project is licensed under the **MIT License**.
 ## 11. Acknowledgements & References
 
 - Inspired by the innovative **1inch Fusion+** protocol  
-- [1inch Fusion+ Whitepaper](#) *(link to be updated)*  
+- [1inch Fusion+ Whitepaper](https://1inch.io/assets/1inch-security-white-paper.pdf)   
 - Thanks to the **Sui team** for SDKs and documentation
