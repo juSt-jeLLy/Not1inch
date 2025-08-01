@@ -40,6 +40,10 @@ const SUI_PRIVATE_KEY_RESOLVER = process.env.SUI_PRIVATE_KEY_RESOLVER!;
 const suiKeypairResolver = Ed25519Keypair.fromSecretKey(Buffer.from(SUI_PRIVATE_KEY_RESOLVER, 'hex'));
 const suiAddressResolver = suiKeypairResolver.getPublicKey().toSuiAddress();
 
+export const DEPLOYED_CONTRACTS = {
+    escrowFactory: '0xfde41A17EBfA662867DA7324C0Bf5810623Cb3F8', 
+    resolver: '0x1Ae0817d98a8A222235A2383422e1A1c03d73e3a'      
+}
 
 describe('Resolving example', () => {
     const srcChainId = config.chain.source.chainId
@@ -72,13 +76,13 @@ describe('Resolving example', () => {
         dstFactory = new EscrowFactory(dst.provider, dst.escrowFactory)
 
         // Transfer ETH to resolver contract for gas
-        await dstChainResolver.transfer(dst.resolver, parseEther('1'))
+        await dstChainResolver.transfer(dst.resolver, parseEther('0.0001'))
 
         // ✅ 1. Transfer USDC directly to the resolver CONTRACT
         await dstChainResolver.transferToken(
             config.chain.destination.tokens.USDC.address,
             dst.resolver, // This is the resolver CONTRACT address
-            parseUnits('1000', 6) // Give contract enough USDC
+            parseUnits('0.1', 6) // Give contract enough USDC
         );
 
         // ✅ 2. Make the resolver CONTRACT approve the escrow factory
@@ -86,7 +90,7 @@ describe('Resolving example', () => {
             'function approve(address spender, uint256 amount) returns (bool)'
         ]);
         resolverInstance = new Resolver(
-            '0x0000000000000000000000000000000000000000', // srcAddress - use actual if you have one
+            dst.resolver, // srcAddress - use actual resolver address
             dst.resolver // dstAddress - this is the deployed resolver contract address
         );
 
@@ -207,8 +211,8 @@ describe('Resolving example', () => {
                 maker: new Address(await dstChainUser.getAddress()),
                 taker: new Address(dst.resolver),
                 token: new Address(config.chain.destination.tokens.USDC.address),
-                amount: parseUnits('99', 6), // 99 USDC
-                safetyDeposit: parseEther('0.001'),
+                amount: parseUnits('0.1', 6), // 99 USDC
+                safetyDeposit: parseEther('0.00001'),
                 timeLocks: timeLocks
             });
         
@@ -226,7 +230,7 @@ describe('Resolving example', () => {
                 throw new Error('Destination cancellation must be before source cancellation');
             }
         
-            const resolverContractInstance = new Resolver('0x0000000000000000000000000000000000000000', dst.resolver);
+            const resolverContractInstance = new Resolver(dst.resolver, dst.resolver);
         
             console.log('🏭 Deploying destination escrow...');
             
@@ -271,13 +275,46 @@ describe('Resolving example', () => {
              const claim = await claimHTLCsrcpartial(htlcId, secrets)
              console.log("resolver claimed funds on Sui chain ")
 
-
+             const resolverEOA = await dstChainResolver.getAddress();
+          
+         
+             const sweepETHTx = resolverInstance.sweepDst('0x0000000000000000000000000000000000000000', resolverEOA);
+             await dstChainResolver.send(sweepETHTx);
+             console.log('✅ ETH swept successfully');
 
 
             console.log('Cross-chain swap completed successfully! 🎉');
         })
     })
 })
+
+async function initChainWithPredeployedContracts(
+    cnf: ChainConfig
+): Promise<{node?: CreateServerReturnType; provider: JsonRpcProvider; escrowFactory: string; resolver: string}> {
+    const {provider} = await getProvider(cnf)
+    
+    // Verify contracts exist at the specified addresses
+    const escrowFactoryCode = await provider.getCode(DEPLOYED_CONTRACTS.escrowFactory)
+    const resolverCode = await provider.getCode(DEPLOYED_CONTRACTS.resolver)
+    
+    if (escrowFactoryCode === '0x') {
+        throw new Error(`No contract found at EscrowFactory address: ${DEPLOYED_CONTRACTS.escrowFactory}`)
+    }
+    
+    if (resolverCode === '0x') {
+        throw new Error(`No contract found at Resolver address: ${DEPLOYED_CONTRACTS.resolver}`)
+    }
+    
+    console.log(`[${cnf.chainId}]`, `Using existing EscrowFactory at`, DEPLOYED_CONTRACTS.escrowFactory)
+    console.log(`[${cnf.chainId}]`, `Using existing Resolver at`, DEPLOYED_CONTRACTS.resolver)
+
+    return {
+        provider, 
+        resolver: DEPLOYED_CONTRACTS.resolver, 
+        escrowFactory: DEPLOYED_CONTRACTS.escrowFactory
+    }
+}
+
 
 async function initChain(
     cnf: ChainConfig

@@ -84,7 +84,7 @@ src = await initChain(config.chain.source)
         // top up resolver contract for approve
         // On live networks, cannot impersonate resolver contract. If resolver is EOA and you have the key, use new Wallet(resolverPk, src.provider). Otherwise, ensure resolver contract is funded and approved externally.
         srcResolverContract = new Wallet(resolverPk, src.provider)
-        await srcChainResolver.transfer(src.resolver, parseEther('1'))
+        await srcChainResolver.transfer(src.resolver, parseEther('0.0001'))
         await srcResolverContract.unlimitedApprove(config.chain.source.tokens.USDC.address, src.escrowFactory)
 
         srcTimestamp = BigInt((await src.provider.getBlock('latest'))!.timestamp)
@@ -122,8 +122,8 @@ src = await initChain(config.chain.source)
                 {
                     salt: Sdk.randBigInt(BigInt(1000)),
                     maker: new Address(await srcChainUser.getAddress()),
-                    makingAmount: parseUnits('100', 6),
-                    takingAmount: parseUnits('99', 6),
+                    makingAmount: parseUnits('0.1', 6),
+                    takingAmount: parseUnits('0.1', 6),
                     makerAsset: new Address(config.chain.source.tokens.USDC.address),
                     takerAsset: new Address(config.chain.source.tokens.USDC.address)
                 },
@@ -140,8 +140,8 @@ src = await initChain(config.chain.source)
                     }),
                     srcChainId,
                     dstChainId,
-                    srcSafetyDeposit: parseEther('0.001'),
-                    dstSafetyDeposit: parseEther('0.001')
+                    srcSafetyDeposit: parseEther('0.00001'),
+                    dstSafetyDeposit: parseEther('0.00001')
                 },
                 {
                     auction: new Sdk.AuctionDetails({
