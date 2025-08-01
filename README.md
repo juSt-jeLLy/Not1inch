@@ -1,50 +1,59 @@
-# cross-chain-resolver-example
+# 1inch Fusion+ Extension On Sui
 
-## Installation
+_Enabling secure, decentralized, and efficient asset swaps across blockchain networks, inspired by 1inch Fusion+._
 
-Install example deps
+## 1. Introduction & Problem Statement
+This project extends 1inch Fusion+ protocol on SUi. It includes competitive Dutch auctions, support for partial fills via Merkle Trees, and a sophisticated multi-stage timelock mechanism etc.
 
-```shell
-pnpm install
-```
+## 2. Key Features
 
-Install [foundry](https://book.getfoundry.sh/getting-started/installation)
+Our Sui HTLC contract implements the following advanced functionalities:
 
-```shell
-curl -L https://foundry.paradigm.xyz | bash
-```
+* **Decentralized & Trustless Cross-Chain Swaps:** Facilitates secure asset exchange between a source chain (conceptualized as EVM) and Sui (destination chain) without intermediaries.
+* **Hashed Timelock Contracts (HTLCs):** Core cryptographic mechanism ensuring either both parties successfully exchange assets, or no exchange takes place.
+* **Dutch Auction Mechanism:** Integrates a descending price auction, allowing resolvers to compete for orders and ensuring optimal exchange rates for the maker.
+* **Support for Partial Fills:** Enables large swap orders to be executed in smaller segments, minimizing price impact and enhancing liquidity.
+* **Merkle Trees for Partial Fill Secrets:** Manages multiple secret hashes for partial fills securely on-chain, utilizing a single Merkle root for verification.
+* **Multi-Stage Timelocks:** Implements a layered timelock system for each HTLC, providing distinct phases for:
+    * **Finality Lock:** Ensures blockchain transaction finality before claims.
+    * **Resolver Exclusive Unlock:** Gives the original resolver a priority window to claim funds.
+    * **Public Unlock:** Allows any party with the secret to claim if the original resolver is unresponsive.
+    * **Resolver Cancellation:** Enables the original resolver to recover funds if the swap fails.
+    * **Public Cancellation Incentive:** Incentivizes any resolver to clean up stuck funds by claiming the original resolver's safety deposit.
+    * **Maker's Final Cancellation:** Provides the maker a last resort to recover funds.
+* **Incentivized Safety Deposits:** Resolvers provide a safety deposit that is claimed by the party executing a successful withdrawal or a critical cancellation, ensuring transactions are finalized.
 
-Install contract deps
+## 3. Core Concepts & How It Works
 
-```shell
-forge install
-```
+### Atomic Swap Fundamentals
+At its core, the system relies on **Hashed Timelock Contracts (HTLCs)**. Funds are locked using the hash of a secret value (`hashlock`). To unlock, the original secret (`hash preimage`) must be revealed. A `timelock` ensures funds aren't stuck indefinitely, allowing refunds if the swap isn't completed within a deadline.
 
-## Running
+### The Dutch Auction
+Orders are placed into a Dutch auction. The price starts high and gradually decreases over a set `duration_ms` until it hits a `reserve_price`. Resolvers monitor these auctions and `fill_order` or `fill_order_partial` when the price becomes profitable for them.
 
-To run tests you need to provide fork urls for Ethereum and Bsc
+### Cross-Chain Swap Flow (High-Level)
 
-```shell
-SRC_CHAIN_RPC=ETH_FORK_URL DST_CHAIN_RPC=BNB_FORK_URL pnpm test
-```
+The protocol workflow is divided into several phases involving the **Maker** (initiates swap), **Resolver** (executes swap), **Sui Contract** (manages HTLCs), and **Relayer** (off-chain service coordinating secrets).
 
-### Public rpc
+#### Case 1: Sui is the Source Chain (SUI -> EVM)
+The Maker's initial order and funds are on Sui. The Resolver commits funds on EVM.
+<img width="1240" height="650" alt="image" src="https://github.com/user-attachments/assets/e76cb5a4-fbf0-498b-b619-572f0c2f8bb6" />
 
-| Chain    | Url                          |
-|----------|------------------------------|
-| Ethereum | https://eth.merkle.io        |
-| BSC      | wss://bsc-rpc.publicnode.com |
+_Flowchart 1: SUI -> EVM Cross-Chain Swap_
 
-## Test accounts
+#### Case 2: EVM is the Source Chain (EVM -> SUI)
+The Maker's initial order and funds are on EVM. The Resolver commits funds on Sui.
+<img width="1241" height="649" alt="image" src="https://github.com/user-attachments/assets/22fb8415-aeb5-4ff0-ae42-bd73648a7a18" />
 
-### Available Accounts
+_Flowchart 2: EVM -> SUI Cross-Chain Swap_
 
-```
-(1) 0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fedc: "0x39619C9fe2AF793f847D112123F62c01df0A0025" User
-(2) 0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66: "0x4207ebd97F999F142fFD3696dD76A61193b23e89" Resolver
-```
+### Partial Fill Mechanism
+For large orders, the Maker can enable partial fills. This allows different Resolvers to fill segments of the order.
+<img width="1314" height="649" alt="image" src="https://github.com/user-attachments/assets/1b19442d-2615-45ff-9408-119fc5765eca" />
+_Flowchart 3: Partial Fill Mechanism & Merkle Tree Interaction_
 
-###  sui cmd
- 'export PATH="/root/.local/bin:$PATH"' >> ~/.bashrc
- source ~/.bashrc
+### Multi-Stage Timelocks for HTLCs
+Each `HashedTimelockEscrow` follows a precise timelock sequence to manage claims and refunds, ensuring fairness and incentivizing participation.
+<img width="1040" height="779" alt="image" src="https://github.com/user-attachments/assets/fa102477-6d4e-4132-a97d-c428e847bbe9" />
 
+_Flowchart 4: Multi-Stage Timelock Lifecycle for HashedTimelockEscrow_
