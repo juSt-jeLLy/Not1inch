@@ -102,3 +102,74 @@ Core module: `sui_htlc_contract::htlc`
 
 ```bash
 cargo install --locked --git https://github.com/MystenLabs/sui.git --tag devnet sui
+
+
+### Installation
+
+```bash
+git clone [your-repo-link]
+cd sui-cross-chain-htlc
+npm install
+```
+
+### Contract Deployment
+
+```bash
+cd sources
+sui move build
+sui client publish --gas-budget 300000000 --json
+```
+
+> Update `.env` with the returned `SUI_PACKAGE_ID`.
+
+### Running Tests
+
+1. Set `SUI_PRIVATE_KEY` and `SUI_PACKAGE_ID` in `.env`.
+2. Run:
+
+```bash
+node sui/client.js
+```
+
+## 6. Client-Side Interaction
+
+**File:** `sui/client.js`
+
+### Features
+
+- **Transaction Building:** via `@mysten/sui/transactions`
+- **Key Management:** using `Ed25519Keypair`
+- **Chain Communication:** using `SuiClient`
+- **Hashing:** via `ethers.js` `keccak256`
+- **Merkle Tree Support:** using `@openzeppelin/merkle-tree`
+- **Secret Index Logic:** replicates Move-side logic via `calculateExpectedSecretIndex`
+
+## 7. Challenges & Solutions
+
+| Challenge                         | Solution                                                                 |
+|----------------------------------|--------------------------------------------------------------------------|
+| Multi-Stage Timelock Design      | Precise structuring of time fields and conditional validation            |
+| Partial Fill State Management    | Efficient bitmap tracking and index validation                           |
+| Cross-Chain Cryptographic Match  | Used `@openzeppelin/merkle-tree` and `sui_hash::keccak256` compatibility |
+
+## 8. Future Enhancements
+
+- On-chain resolver registry (for KYC/KYB compliance)
+- Piecewise linear or non-linear Dutch auction curves
+- Cross-chain messaging using Sui-native messaging
+- Dedicated off-chain relayer for automation
+- Frontend dApp for user-friendly interaction
+
+## 9. Contributing
+
+Contributions are welcome! Feel free to open issues or submit PRs.
+
+## 10. License
+
+This project is licensed under the **MIT License**.
+
+## 11. Acknowledgements & References
+
+- Inspired by the innovative **1inch Fusion+** protocol  
+- [1inch Fusion+ Whitepaper](#) *(link to be updated)*  
+- Thanks to the **Sui team** for SDKs and documentation
