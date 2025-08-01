@@ -101,20 +101,19 @@ Core module: `sui_htlc_contract::htlc`
 - Sui CLI:
 
 ```bash
-cargo install --locked --git https://github.com/MystenLabs/sui.git --tag devnet sui
+cargo install --locked --git https://github.com/MystenLabs/sui.git --tag testnet sui
 ```
 ### Installation
 
 ```bash
-git clone [your-repo-link]
-cd sui-cross-chain-htlc
+git clone https://github.com/juSt-jeLLy/Not1inch/ 
 npm install
 ```
 
 ### Contract Deployment
 
 ```bash
-cd sources
+cd source/sources
 sui move build
 sui client publish --gas-budget 300000000 --json
 ```
@@ -123,25 +122,35 @@ sui client publish --gas-budget 300000000 --json
 
 ### Running Tests
 
-1. Set `SUI_PRIVATE_KEY` and `SUI_PACKAGE_ID` in `.env`.
+1. Set `.env` according to [`.env.example`](https://github.com/juSt-jeLLy/Not1inch/blob/main/.env.example)
 2. Run:
 
 ```bash
 node sui/client.js
 ```
 
-## 6. Client-Side Interaction
+## 6. Frontend/UI
 
-**File:** `sui/client.js`
+**File:** `client/frontend`
 
 ### Features
 
 - **Transaction Building:** via `@mysten/sui/transactions`
 - **Key Management:** using `Ed25519Keypair`
-- **Chain Communication:** using `SuiClient`
+- **Chain Communication:** using `suiClient`
 - **Hashing:** via `ethers.js` `keccak256`
-- **Merkle Tree Support:** using `@openzeppelin/merkle-tree`
 - **Secret Index Logic:** replicates Move-side logic via `calculateExpectedSecretIndex`
+
+
+
+
+
+
+
+
+
+
+
 
 ## 7. Future Enhancements
 
