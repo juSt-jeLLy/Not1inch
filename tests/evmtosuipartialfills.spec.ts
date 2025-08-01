@@ -127,8 +127,8 @@ describe('Resolving example', () => {
                 {
                     salt: Sdk.randBigInt(1000n),
                     maker: new Address(await srcChainUser.getAddress()),
-                    makingAmount: parseUnits('0.1', 6),
-                    takingAmount: parseUnits('0.1', 6),
+                    makingAmount: parseUnits('100', 6),
+                    takingAmount: parseUnits('100', 6),
                     makerAsset: new Address(config.chain.source.tokens.USDC.address),
                     takerAsset: new Address(config.chain.source.tokens.USDC.address)
                 },
@@ -272,6 +272,7 @@ describe('Resolving example', () => {
             expect(resultBalances.src.resolver - initialBalances.src.resolver).toBe(order.makingAmount / 2n)
             // resolver transferred funds to user on destination chain (SUI)
             // (SUI side is checked by the SUI helper, not by EVM balance)
+            
         })
     })
 })

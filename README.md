@@ -35,6 +35,25 @@ The system relies on **Hashed Timelock Contracts (HTLCs)**. Funds are locked usi
 - Price starts high and decreases linearly over `duration_ms` until reaching `reserve_price`.
 - Resolvers monitor and fill when price is acceptable.
 
+### Code 
+For detailed implementation of how CCIP is integrated , please refer :
+
+[SUI Contract](https://github.com/juSt-jeLLy/Not1inch/blob/main/source/sources/source.move)
+
+[Functions To Interact With SUI Contract](https://github.com/juSt-jeLLy/Not1inch/blob/main/sui/clientpartial.ts)
+
+
+[Transections of SUI Chain](https://suiscan.xyz/testnet/object/0x14e9f86c5e966674e6dbb28545bbff2052e916d93daba5729dbc475b1b336bb4/tx-blocks)
+
+[EVM to SUI Swap File](https://github.com/juSt-jeLLy/Not1inch/blob/main/tests/main.spec.ts)
+
+[SUI to EVM Swap File](https://github.com/juSt-jeLLy/Not1inch/blob/main/tests/suitoevm.spec.ts)
+
+[EVM to SUI Partial Fills Swap File](https://github.com/juSt-jeLLy/Not1inch/blob/main/tests/evmtosuipartialfills.spec.ts)
+
+[SUI to EVM Partial Fills Swap File](https://github.com/juSt-jeLLy/Not1inch/blob/main/tests/suitoevmpartialfills.spec.ts)
+
+
 ### Cross-Chain Swap Flow (High-Level)
 
 #### Case 1: Sui is the Source Chain (SUI → EVM)
@@ -122,12 +141,55 @@ sui client publish --gas-budget 300000000 --json
 
 ### Running Tests
 
+## SUI Functions Test
+
 1. Set `.env` according to [`.env.example`](https://github.com/juSt-jeLLy/Not1inch/blob/main/.env.example)
 2. Run:
 
 ```bash
 node sui/client.js
 ```
+
+## Cross chain swap
+
+#Set Up
+
+```
+(1) 0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fedc: "0x39619C9fe2AF793f847D112123F62c01df0A0025" User
+(2) 0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66: "0x4207ebd97F999F142fFD3696dD76A61193b23e89" Resolver
+```
+```shell
+pnpm install
+```
+```shell
+forge install
+```
+```shell
+forge build
+```
+# Then Run
+
+For EVM to SUI standard order 
+
+```shell
+pnpm test main.spec.ts
+```
+For SUI to EVM standard order 
+
+```shell
+pnpm test suitoevm.spec.ts
+```
+For SUI to EVM Partial Fills
+
+```shell
+pnpm test suitoevmpartialfills.spec.ts
+```
+For EVM to SUI Partial Fills
+
+```shell
+pnpm test evmtosuipartialfills.spec.ts
+```
+
 
 ## 6. Frontend/UI
 

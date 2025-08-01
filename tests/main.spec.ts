@@ -35,7 +35,7 @@ const suiAddressUser = suiKeypairUser.getPublicKey().toSuiAddress();
 const userPk = '0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fedc'
 const resolverPk = '0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66'
 
-export const DEPLOYED_CONTRACTS = {
+const DEPLOYED_CONTRACTS = {
     escrowFactory: '0xfde41A17EBfA662867DA7324C0Bf5810623Cb3F8', 
     resolver: '0x1Ae0817d98a8A222235A2383422e1A1c03d73e3a'      
 }
@@ -84,7 +84,7 @@ src = await initChain(config.chain.source)
         // top up resolver contract for approve
         // On live networks, cannot impersonate resolver contract. If resolver is EOA and you have the key, use new Wallet(resolverPk, src.provider). Otherwise, ensure resolver contract is funded and approved externally.
         srcResolverContract = new Wallet(resolverPk, src.provider)
-        await srcChainResolver.transfer(src.resolver, parseEther('0.0001'))
+        await srcChainResolver.transfer(src.resolver, parseEther('1'))
         await srcResolverContract.unlimitedApprove(config.chain.source.tokens.USDC.address, src.escrowFactory)
 
         srcTimestamp = BigInt((await src.provider.getBlock('latest'))!.timestamp)
@@ -120,43 +120,43 @@ src = await initChain(config.chain.source)
             const order = Sdk.CrossChainOrder.new(
                 new Address(src.escrowFactory),
                 {
-                    salt: Sdk.randBigInt(BigInt(1000)),
+                    salt: Sdk.randBigInt(1000n),
                     maker: new Address(await srcChainUser.getAddress()),
-                    makingAmount: parseUnits('0.1', 6),
-                    takingAmount: parseUnits('0.1', 6),
+                    makingAmount: parseUnits('100', 6),
+                    takingAmount: parseUnits('99', 6),
                     makerAsset: new Address(config.chain.source.tokens.USDC.address),
                     takerAsset: new Address(config.chain.source.tokens.USDC.address)
                 },
                 {
                     hashLock: hashLock,
                     timeLocks: Sdk.TimeLocks.new({
-                        srcWithdrawal: BigInt(10), // 10sec finality lock for test
-                        srcPublicWithdrawal: BigInt(120), // 2m for private withdrawal
-                        srcCancellation: BigInt(121), // 1sec public withdrawal
-                        srcPublicCancellation: BigInt(122), // 1sec private cancellation
-                        dstWithdrawal: BigInt(10), // 10sec finality lock for test
-                        dstPublicWithdrawal: BigInt(100), // 100sec private withdrawal
-                        dstCancellation: BigInt(101) // 1sec public withdrawal
+                        srcWithdrawal: 10n, // 10sec finality lock for test
+                        srcPublicWithdrawal: 120n, // 2m for private withdrawal
+                        srcCancellation: 121n, // 1sec public withdrawal
+                        srcPublicCancellation: 122n, // 1sec private cancellation
+                        dstWithdrawal: 10n, // 10sec finality lock for test
+                        dstPublicWithdrawal: 100n, // 100sec private withdrawal
+                        dstCancellation: 101n // 1sec public withdrawal
                     }),
                     srcChainId,
                     dstChainId,
-                    srcSafetyDeposit: parseEther('0.00001'),
-                    dstSafetyDeposit: parseEther('0.00001')
+                    srcSafetyDeposit: parseEther('0.001'),
+                    dstSafetyDeposit: parseEther('0.001')
                 },
                 {
                     auction: new Sdk.AuctionDetails({
                         initialRateBump: 0,
                         points: [],
-                        duration: BigInt(120),
+                        duration: 120n,
                         startTime: srcTimestamp
                     }),
                     whitelist: [
                         {
                             address: new Address(src.resolver),
-                            allowFrom: BigInt(0)
+                            allowFrom: 0n
                         }
                     ],
-                    resolvingStartTime: BigInt(0)
+                    resolvingStartTime: 0n
                 },
                 {
                     nonce: Sdk.randBigInt(UINT_40_MAX),
@@ -293,7 +293,7 @@ async function initChain(
         [
             cnf.limitOrderProtocol,
             cnf.wrappedNative, // feeToken,
-            Address.fromBigInt(BigInt(0)).toString(), // accessToken,
+            Address.fromBigInt(0n).toString(), // accessToken,
             deployer.address, // owner
             60 * 30, // src rescue delay
             60 * 30 // dst rescue delay
@@ -319,7 +319,7 @@ async function initChain(
     return {provider, resolver, escrowFactory}
 }
 
-export async function getProvider(cnf: ChainConfig): Promise<{provider: JsonRpcProvider}> {
+async function getProvider(cnf: ChainConfig): Promise<{provider: JsonRpcProvider}> {
     // Always use live RPC URL from config
     return {
         provider: new JsonRpcProvider(cnf.url, cnf.chainId, {

@@ -265,7 +265,7 @@ describe('Resolving example', () => {
         })
     })
 })
-async function initChainWithPredeployedContracts(
+export async function initChainWithPredeployedContracts(
     cnf: ChainConfig
 ): Promise<{node?: CreateServerReturnType; provider: JsonRpcProvider; escrowFactory: string; resolver: string}> {
     const {provider} = await getProvider(cnf)
