@@ -144,30 +144,22 @@ node sui/client.js
 - **Merkle Tree Support:** using `@openzeppelin/merkle-tree`
 - **Secret Index Logic:** replicates Move-side logic via `calculateExpectedSecretIndex`
 
-## 7. Challenges & Solutions
-
-| Challenge                         | Solution                                                                 |
-|----------------------------------|--------------------------------------------------------------------------|
-| Multi-Stage Timelock Design      | Precise structuring of time fields and conditional validation            |
-| Partial Fill State Management    | Efficient bitmap tracking and index validation                           |
-| Cross-Chain Cryptographic Match  | Used `@openzeppelin/merkle-tree` and `sui_hash::keccak256` compatibility |
-
-## 8. Future Enhancements
+## 7. Future Enhancements
 
 - On-chain resolver registry (for KYC/KYB compliance)
 - Piecewise linear or non-linear Dutch auction curves
 - Cross-chain messaging using Sui-native messaging
 
 
-## 9. Contributing
+## 8. Contributing
 
 Contributions are welcome! Feel free to open issues or submit PRs.
 
-## 10. License
+## 9. License
 
 This project is licensed under the **MIT License**.
 
-## 11. Acknowledgements & References
+## 10. Acknowledgements & References
 
 - Inspired by the innovative **1inch Fusion+** protocol  
 - [1inch Fusion+ Whitepaper](https://1inch.io/assets/1inch-security-white-paper.pdf)   
