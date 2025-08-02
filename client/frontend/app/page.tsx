@@ -62,7 +62,7 @@ const [toAmount, setToAmount] = useState('');
 const [lastEditedField, setLastEditedField] = useState('from');
 const [isSwapping, setIsSwapping] = useState(false);
 const [swapStatus, setSwapStatus] = useState('');
-const [isPartialFillAllowed, setIsPartialFillAllowed] = useState(false);
+const [isPartialFillAllowed, setIsPartialFillAllowed] = useState(true);
 const [partsCount, setPartsCount] = useState(1); // Number of parts for partial fill
 
 // Sui wallet state
@@ -168,7 +168,7 @@ const handleSwapNow = async () => {
 
   try {
     if(isPartialFillAllowed){
-      await handlePartialSwap(parseFloat(fromAmount));
+      await handlePartialSwap(parseFloat());
       return;
     }
     else{
@@ -375,7 +375,9 @@ const handleSwapNow = async () => {
 };
 
 
-const handlePartialSwap = async (totalAmount: number)=>{
+const handlePartialSwap = async ()=>{
+  // 
+  const totalAmount = 100_000_000;
   // Annouce the order
   toast("Swap initialised (partial fills are allowed)")
   const userPartsCount = prompt("How many parts do you want to split the swap into?", partsCount.toString());
@@ -428,58 +430,61 @@ const handlePartialSwap = async (totalAmount: number)=>{
         }
       );
     });
+    console.log("Created Order ID:", createdOrderId);
+
 
     if (!createdOrderId) {
       throw new Error("Failed to create order");
     }
-    toast("Dutch Auction Strted. Calling partailAuctiontick to get the current price!")
-    const auctionTickRes = await auctionTickpartial(createdOrderId);
-    toast("Current Price: " + auctionTickRes)
+    // toast("Dutch Auction Strted. Calling partailAuctiontick to get the current price!")
+    // const auctionTickRes = await auctionTickpartial(createdOrderId);
+    // toast("Current Price: " + auctionTickRes)
 
     // Fill order
     toast(`Our resolver will fill the ${userPartsCount}th part of the order!`);
     const idx = Number((BigInt(secrets.length - 1)))
     const fillAmount1= totalAmount/ idx;
-    let remainingAmount= totalAmount;
+    // const fillAmount1 = BigInt(Math.floor(fillAmount1Raw * 1_000_000_000));
+    let remainingAmount= 100_000_000;
     const expectedIndex = calculateExpectedSecretIndex(totalAmount, remainingAmount,fillAmount1, idx);
     const targetSecretHash = secretHashes[expectedIndex];
     const fill_order_partial = await fillOrderPartial(createdOrderId, fillAmount1, expectedIndex,targetSecretHash);
     if (!fill_order_partial) {
                 throw new Error('Fill order partial is undefined');
     }
-    toast("Partial fill successful! Remaining amount: " + (remainingAmount - fillAmount1));
-    remainingAmount -= fillAmount1;
+    // toast("Partial fill successful! Remaining amount: " + (remainingAmount - fillAmount1));
+    // remainingAmount -= fillAmount1;
     console.log("Remaining Amount after partial fill:", remainingAmount);
 
 
     // Create HTLC
     toast("User has to sign the transaction to create the escrow on Sui chain")
     const txHtlc = new Transaction();
-        const [htlcCoin] = tx.splitCoins(tx.gas, [
-        tx.pure.u64(25_000_000)
+        const [htlcCoin] = txHtlc.splitCoins(tx.gas, [
+        txHtlc.pure.u64(25_000_000)
     ]);
 
     tx.moveCall({
         target: `${SUI_PACKAGE_ID}::htlc::create_htlc_escrow_src_partial`,
         typeArguments: ['0x2::sui::SUI'],
         arguments: [
-            tx.object(createdOrderId),
-            tx.makeMoveVec({ elements: [tx.object(htlcCoin)] }),
-            tx.pure.vector('u8', hexToU8Vector(targetSecretHash)),
-            tx.pure.u64(FINALITY_LOCK_DURATION_MS),
-            tx.pure.u64(RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS),
-            tx.pure.u64(RESOLVER_CANCELLATION_DURATION_MS),
-            tx.pure.u64(MAKER_CANCELLATION_DURATION_MS),
-            tx.pure.u64(PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS),
-            tx.pure.address(resolverAddress),
-            tx.pure.u64(expectedIndex),
-            tx.object('0x6'), // clock
+            txHtlc.object(createdOrderId),
+            txHtlc.makeMoveVec({ elements: [txHtlc.object(htlcCoin)] }),
+            txHtlc.pure.vector('u8', hexToU8Vector(targetSecretHash)),
+            txHtlc.pure.u64(FINALITY_LOCK_DURATION_MS),
+            txHtlc.pure.u64(RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS),
+            txHtlc.pure.u64(RESOLVER_CANCELLATION_DURATION_MS),
+            txHtlc.pure.u64(MAKER_CANCELLATION_DURATION_MS),
+            txHtlc.pure.u64(PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS),
+            txHtlc.pure.address(resolverAddress),
+            txHtlc.pure.u64(expectedIndex),
+            txHtlc.object('0x6'), // clock
         ],
     });
       const htlcId = await new Promise<string | undefined>((resolve, reject) => {
       signAndExecuteTransaction(
         {
-          transaction: tx,
+          transaction: txHtlc,
           chain: "sui:testnet",
         },
         {
