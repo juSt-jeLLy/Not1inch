@@ -5,6 +5,7 @@ import { Providers } from "./providers";
 import "@mysten/dapp-kit/dist/index.css";
 import { headers } from 'next/headers'; // added
 import ContextProvider from '@/context'; // added
+import { ToastContainer } from 'react-toastify';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,7 +37,7 @@ export default async function RootLayout({
         <ContextProvider cookies={cookies}> {/* added wrapper */}
           
             {children}
-          
+          <ToastContainer/>
         </ContextProvider> {/* added wrapper */}
         </Providers>
       </body>

@@ -173,7 +173,7 @@ describe('Resolving example', () => {
             // create HTLCsrc on Sui chain
             console.log("create HTLCsrc on Sui chain ")
 
-            const htlcSrc = await createHTLCSrcPartial(partialOrderId,hash, suiAddressResolver,expectedIndex)
+            const htlcSrc = await createHTLCSrcPartial(partialOrderId,targetSecretHash, suiAddressResolver,expectedIndex)
             if (!htlcSrc) throw new Error('htlcSrc is undefined');
             const htlcId = htlcSrc.toString();
             if (!htlcId) throw new Error('htlcId is undefined');

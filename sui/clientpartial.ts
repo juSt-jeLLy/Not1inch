@@ -8,9 +8,12 @@ import Sdk from '@1inch/cross-chain-sdk'
 
 dotenvConfig();
 
-const SUI_PRIVATE_KEY_RESOLVER = process.env.SUI_PRIVATE_KEY_RESOLVER!;
-const SUI_PRIVATE_KEY_USER = process.env.SUI_PRIVATE_KEY_USER!;
-const SUI_PACKAGE_ID  = process.env.SUI_PACKAGE_ID!;
+// const SUI_PRIVATE_KEY_RESOLVER = process.env.SUI_PRIVATE_KEY_RESOLVER!;
+// const SUI_PRIVATE_KEY_USER = process.env.SUI_PRIVATE_KEY_USER!;
+const SUI_PRIVATE_KEY_RESOLVER = "e3cbc98f1be6f9caf78c2fb3ba2a19de1e49fdc4f05ddd082e37a18ef5252918";
+const SUI_PRIVATE_KEY_USER = "1d6b12793508282886435d5896c1898c1f05e744f64c8c9faeac1bdfdc1b5105";
+const SUI_PACKAGE_ID="0x14e9f86c5e966674e6dbb28545bbff2052e916d93daba5729dbc475b1b336bb4"
+// const SUI_PACKAGE_ID  = process.env.SUI_PACKAGE_ID!;
 const suiClient       = new SuiClient({ url: getFullnodeUrl('testnet') });
 
 const suiKeypairResolver = Ed25519Keypair.fromSecretKey(Buffer.from(SUI_PRIVATE_KEY_RESOLVER, 'hex'));

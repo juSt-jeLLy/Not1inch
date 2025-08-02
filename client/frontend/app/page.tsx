@@ -10,12 +10,14 @@ import { Transaction } from "@mysten/sui/transactions";
 import { useSignAndExecuteTransaction, useSignTransaction } from "@mysten/dapp-kit";
 import { useSuiClient } from "@mysten/dapp-kit";
 import {uint8ArrayToHex, UINT_40_MAX} from '@1inch/byte-utils'
-import { randomBytes, Result } from "ethers";
+import { randomBytes, Result, sha256 } from "ethers";
 import { SDK, HashLock } from "@1inch/cross-chain-sdk";
 import { keccak256, toUtf8Bytes } from "ethers";
 import {auctionTick, fillStandardOrder, addSafetyDeposit, announceStandardOrder} from '../../../sui/clientpartial'
-
 import {FINALITY_LOCK_DURATION_MS, RESOLVER_CANCELLATION_DURATION_MS, RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS, MAKER_CANCELLATION_DURATION_MS, PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS} from "./func/suitoevm"
+import { toast } from "react-toastify";
+import { auctionTickpartial, fillOrderPartial,calculateExpectedSecretIndex } from "../../../sui/clientpartial";
+import {MerkleTree} from "merkletreejs"
 
 // Hardcoded configuration
 const SUI_PACKAGE_ID = "0x14e9f86c5e966674e6dbb28545bbff2052e916d93daba5729dbc475b1b336bb4";
@@ -60,24 +62,26 @@ const [toAmount, setToAmount] = useState('');
 const [lastEditedField, setLastEditedField] = useState('from');
 const [isSwapping, setIsSwapping] = useState(false);
 const [swapStatus, setSwapStatus] = useState('');
+const [isPartialFillAllowed, setIsPartialFillAllowed] = useState(false);
+const [partsCount, setPartsCount] = useState(1); // Number of parts for partial fill
 
 // Sui wallet state
 const currentAccount = useCurrentAccount();
 const isSuiWalletConnected = !!currentAccount;
 const suiClient = useSuiClient();
 const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
-		execute: async ({ bytes, signature }) =>
-			await suiClient.executeTransactionBlock({
-				transactionBlock: bytes,
-				signature,
-				options: {
-					// Raw effects are required so the effects can be reported back to the wallet
-					showRawEffects: true,
-					// Select additional data to return
-					showObjectChanges: true,
-				},
-			}),
-	});
+    execute: async ({ bytes, signature }) =>
+      await suiClient.executeTransactionBlock({
+        transactionBlock: bytes,
+        signature,
+        options: {
+          // Raw effects are required so the effects can be reported back to the wallet
+          showRawEffects: true,
+          // Select additional data to return
+          showObjectChanges: true,
+        },
+      }),
+  });
 
 // ETH wallet state from AppKit
 const { address: ethAddress, isConnected: isEthConnected } = useAppKitAccount();
@@ -163,6 +167,11 @@ const handleSwapNow = async () => {
   setSwapStatus('Starting swap...');
 
   try {
+    if(isPartialFillAllowed){
+      await handlePartialSwap();
+      return;
+    }
+    else{
     const swapData = {
       fromToken: {
         id: fromToken.id,
@@ -348,11 +357,11 @@ const handleSwapNow = async () => {
       setFromAmount('');
       setToAmount('');
       setReceivingAddress('');
-      
+    
     } else {
       throw new Error(apiResult.error || 'Destination swap failed');
     }
-
+  }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     console.error("❌ Swap failed:", error);
@@ -365,6 +374,146 @@ const handleSwapNow = async () => {
   }
 };
 
+
+const handlePartialSwap = async ()=>{
+  // for hackathon the total amount is hardcoded
+  const totalAmount = 100_000_000;
+  // Annouce the order
+  toast("Swap initialised (partial fills are allowed)")
+  const userPartsCount = prompt("How many parts do you want to split the swap into?", partsCount.toString());
+  setPartsCount(userPartsCount ? parseInt(userPartsCount) : 1); 
+   const secrets = Array.from({length: parseInt(userPartsCount ?? "1") || 1}).map(() => uint8ArrayToHex(randomBytes(32))) // note: use crypto secure random number in the real world
+   console.log("secret lengthh:", secrets.length);
+   const secretHashes = secrets.map((s) => HashLock.hashSecret(s))
+   const leaves = HashLock.getMerkleLeaves(secrets)
+   const parts= HashLock.forMultipleFills(leaves).getPartsCount();
+   const hashLock = HashLock.forMultipleFills(leaves)
+    //Merkle Tree
+    const tree= new MerkleTree(leaves, sha256)
+    const root = tree.getRoot().toString('hex')
+    console.log('Merkle Root:', root);
+    const hash = hashLock.toString();
+    console.log('hashLock:', hashLock);
+    const tx = new Transaction();
+
+    tx.moveCall({
+        target: `${SUI_PACKAGE_ID}::htlc::partial_announce_order`,
+        typeArguments: ['0x2::sui::SUI'],
+        arguments: [
+            tx.pure.u64(totalAmount),
+            tx.pure.u64(1_000_000_000), // start_price
+            tx.pure.u64(900_000_000),   // reserve_price
+            tx.pure.u64(60 * 1000),     // duration_ms
+            tx.pure.u64(partsCount),
+            tx.pure.vector('u8', hexToU8Vector(root)), 
+            tx.object('0x6'), // clock
+        ],
+    });
+    const createdOrderId = await new Promise<string | undefined>((resolve, reject) => {
+      signAndExecuteTransaction(
+        {
+          transaction: tx,
+          chain: "sui:testnet",
+        },
+        {
+          onSuccess: (result) => {
+            const created = result.objectChanges?.find(
+              (change) => change.type === "created"
+            )?.objectId;
+            console.log("✅ Order (supporting partial fills) ID created:", created);
+            toast("Order created successfully! Resolvers can now fill it in parts.");
+            resolve(created);
+          },
+          onError: (err) => {
+            console.error("❌ Failed to announce order:", err);
+            reject(err);
+          },
+        }
+      );
+    });
+    console.log("Created Order ID:", createdOrderId);
+
+
+    if (!createdOrderId) {
+      throw new Error("Failed to create order");
+    }
+    // toast("Dutch Auction Strted. Calling partailAuctiontick to get the current price!")
+    // const auctionTickRes = await auctionTickpartial(createdOrderId);
+    // toast("Current Price: " + auctionTickRes)
+
+    // Fill order
+    toast(`Our resolver will fill the ${userPartsCount}th part of the order!`);
+    const idx = Number((BigInt(secrets.length - 1)))
+    const fillAmount1= totalAmount/ idx;
+    // const fillAmount1 = BigInt(Math.floor(fillAmount1Raw * 1_000_000_000));
+    let remainingAmount= 100_000_000;
+    const expectedIndex = calculateExpectedSecretIndex(totalAmount, remainingAmount,fillAmount1, idx);
+    const targetSecretHash = secretHashes[expectedIndex];
+    const fill_order_partial = await fillOrderPartial(createdOrderId, fillAmount1, expectedIndex,targetSecretHash);
+    if (!fill_order_partial) {
+                throw new Error('Fill order partial is undefined');
+    }
+    // toast("Partial fill successful! Remaining amount: " + (remainingAmount - fillAmount1));
+    // remainingAmount -= fillAmount1;
+    console.log("Remaining Amount after partial fill:", remainingAmount);
+
+
+    // Create HTLC
+    toast("User has to sign the transaction to create the escrow on Sui chain")
+    const txHtlc = new Transaction();
+        const [htlcCoin] = txHtlc.splitCoins(txHtlc.gas, [
+        txHtlc.pure.u64(25_000_000)
+    ]);
+
+    txHtlc.moveCall({
+        target: `${SUI_PACKAGE_ID}::htlc::create_htlc_escrow_src_partial`,
+        typeArguments: ['0x2::sui::SUI'],
+        arguments: [
+            txHtlc.object(createdOrderId),
+            txHtlc.makeMoveVec({ elements: [txHtlc.object(htlcCoin)] }),
+            txHtlc.pure.vector('u8', hexToU8Vector(targetSecretHash)),
+            txHtlc.pure.u64(FINALITY_LOCK_DURATION_MS),
+            txHtlc.pure.u64(RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS),
+            txHtlc.pure.u64(RESOLVER_CANCELLATION_DURATION_MS),
+            txHtlc.pure.u64(MAKER_CANCELLATION_DURATION_MS),
+            txHtlc.pure.u64(PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS),
+            txHtlc.pure.address(resolverAddress),
+            txHtlc.pure.u64(expectedIndex),
+            txHtlc.object('0x6'), // clock
+        ],
+    });
+      const htlcId = await new Promise<string | undefined>((resolve, reject) => {
+      signAndExecuteTransaction(
+        {
+          transaction: txHtlc,
+          chain: "sui:testnet",
+        },
+        {
+          onSuccess: (result) => {
+            const created = result.objectChanges?.find(
+              (change) => change.type === "created"
+            )?.objectId;
+            console.log("✅ HTLC Source(Partial Fills) Created:", created);
+            toast("HTLC Source created successfully!")
+            resolve(created);
+          },
+          onError: (err) => {
+            console.error("❌ Failed to create HTLC:", err);
+            reject(err);
+          },
+        }
+      );
+    });
+
+    if (!htlcId) {
+      throw new Error("Failed to create HTLC");
+    }
+
+    console.log("✅ HTLC Source (PF) created successfully!");
+
+
+
+}
 return (
   <div className="min-h-screen bg-gradient-to-br from-[#1a1a1a] via-[#242424] to-[#1a1a1a] text-white font-mono">
     {/* Navbar */}
@@ -563,9 +712,39 @@ return (
             </div>
           )}
 
+            {/* Enable Partial Fills Button */}
+            
+            {/* <button
+              type="button"
+              disabled={isPartialFillAllowed}
+              onClick={() => {
+                setIsPartialFillAllowed(true);
+                toast("Partial fills enabled! You can now swap in parts.");
+              }}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
+              isPartialFillAllowed
+                ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-[#ffd700] via-[#ffed4a] to-[#ffd700] text-black hover:scale-105'
+              }`}
+            >
+              Enable Partial Fills
+            </button> */}
+            {/* <button onClick={()=> {
+              alert("Partial fills allowed now")
+              setIsPartialFillAllowed(true);
+              console.log("Partial fills enabled", isPartialFillAllowed);}}>
+              Enable Partial Fills
+            </button> */}
+            
+
           {/* Swap Button */}
           <button
-            onClick={handleSwapNow}
+            onClick={()=>{
+                if (window.confirm("Do you want to swap in parts? If yes, click OK, else click Cancel")) {
+                setIsPartialFillAllowed(true);
+                }
+              handleSwapNow()
+            }}
             disabled={!receivingAddress || !isWalletConnectionValid() || !fromAmount || !toAmount}
             className={`relative w-full py-4 rounded-xl text-center font-bold text-lg transition-all duration-300 ${
               receivingAddress && isWalletConnectionValid() && fromAmount && toAmount
