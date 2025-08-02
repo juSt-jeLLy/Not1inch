@@ -1,6 +1,6 @@
 // pages/api/execute-swap.ts
 import { NextApiRequest, NextApiResponse } from 'next';
-import { executeDestinationSwap, SwapParams } from '../../shared/swap-logic';
+import { executeDestinationSwap, SwapParams } from '../shared/swap-logic';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     // Set CORS headers for cross-origin requests
