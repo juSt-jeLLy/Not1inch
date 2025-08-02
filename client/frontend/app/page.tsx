@@ -62,7 +62,7 @@ const [toAmount, setToAmount] = useState('');
 const [lastEditedField, setLastEditedField] = useState('from');
 const [isSwapping, setIsSwapping] = useState(false);
 const [swapStatus, setSwapStatus] = useState('');
-const [isPartialFillAllowed, setIsPartialFillAllowed] = useState(true);
+const [isPartialFillAllowed, setIsPartialFillAllowed] = useState(false);
 const [partsCount, setPartsCount] = useState(1); // Number of parts for partial fill
 
 // Sui wallet state
@@ -168,7 +168,7 @@ const handleSwapNow = async () => {
 
   try {
     if(isPartialFillAllowed){
-      await handlePartialSwap(parseFloat());
+      await handlePartialSwap();
       return;
     }
     else{
@@ -376,7 +376,7 @@ const handleSwapNow = async () => {
 
 
 const handlePartialSwap = async ()=>{
-  // 
+  // for hackathon the total amount is hardcoded
   const totalAmount = 100_000_000;
   // Annouce the order
   toast("Swap initialised (partial fills are allowed)")
@@ -712,23 +712,39 @@ return (
             </div>
           )}
 
-          {/* Partial Fills Allowed Checkbox */}
-          <div className="mb-4 flex items-center">
-            <input
-              type="checkbox"
-              id="partialFillAllowed"
-              checked={isPartialFillAllowed}
-              onChange={e => setIsPartialFillAllowed(e.target.checked)}
-              className="mr-2 h-4 w-4 text-[#ffd700] focus:ring-[#ffd700] border-gray-300 rounded"
-            />
-            <label htmlFor="partialFillAllowed" className="text-sm text-gray-300 select-none">
-              Allow Partial Fills
-            </label>
-          </div>
+            {/* Enable Partial Fills Button */}
+            
+            {/* <button
+              type="button"
+              disabled={isPartialFillAllowed}
+              onClick={() => {
+                setIsPartialFillAllowed(true);
+                toast("Partial fills enabled! You can now swap in parts.");
+              }}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all duration-300 ${
+              isPartialFillAllowed
+                ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-[#ffd700] via-[#ffed4a] to-[#ffd700] text-black hover:scale-105'
+              }`}
+            >
+              Enable Partial Fills
+            </button> */}
+            {/* <button onClick={()=> {
+              alert("Partial fills allowed now")
+              setIsPartialFillAllowed(true);
+              console.log("Partial fills enabled", isPartialFillAllowed);}}>
+              Enable Partial Fills
+            </button> */}
+            
 
           {/* Swap Button */}
           <button
-            onClick={handleSwapNow}
+            onClick={()=>{
+                if (window.confirm("Do you want to swap in parts? If yes, click OK, else click Cancel")) {
+                setIsPartialFillAllowed(true);
+                }
+              handleSwapNow()
+            }}
             disabled={!receivingAddress || !isWalletConnectionValid() || !fromAmount || !toAmount}
             className={`relative w-full py-4 rounded-xl text-center font-bold text-lg transition-all duration-300 ${
               receivingAddress && isWalletConnectionValid() && fromAmount && toAmount
