@@ -382,7 +382,8 @@ const handlePartialSwap = async ()=>{
   toast("Swap initialised (partial fills are allowed)")
   const userPartsCount = prompt("How many parts do you want to split the swap into?", partsCount.toString());
   setPartsCount(userPartsCount ? parseInt(userPartsCount) : 1); 
-   const secrets = Array.from({length: 11}).map(() => uint8ArrayToHex(randomBytes(32))) // note: use crypto secure random number in the real world
+   const secrets = Array.from({length: parseInt(userPartsCount ?? "1") || 1}).map(() => uint8ArrayToHex(randomBytes(32))) // note: use crypto secure random number in the real world
+   console.log("secret lengthh:", secrets.length);
    const secretHashes = secrets.map((s) => HashLock.hashSecret(s))
    const leaves = HashLock.getMerkleLeaves(secrets)
    const parts= HashLock.forMultipleFills(leaves).getPartsCount();
@@ -460,11 +461,11 @@ const handlePartialSwap = async ()=>{
     // Create HTLC
     toast("User has to sign the transaction to create the escrow on Sui chain")
     const txHtlc = new Transaction();
-        const [htlcCoin] = txHtlc.splitCoins(tx.gas, [
+        const [htlcCoin] = txHtlc.splitCoins(txHtlc.gas, [
         txHtlc.pure.u64(25_000_000)
     ]);
 
-    tx.moveCall({
+    txHtlc.moveCall({
         target: `${SUI_PACKAGE_ID}::htlc::create_htlc_escrow_src_partial`,
         typeArguments: ['0x2::sui::SUI'],
         arguments: [
