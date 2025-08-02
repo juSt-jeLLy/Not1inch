@@ -1,7 +1,7 @@
 import {AbiCoder, Contract, JsonRpcProvider, Signer, TransactionRequest, Wallet as PKWallet} from 'ethers'
 import Sdk from '@1inch/cross-chain-sdk'
-import ERC20 from '../dist/contracts/IERC20.sol/IERC20.json'
-
+import {abi} from '../dist/contracts/IERC20.sol/IERC20.json'
+import {CrossChainOrder, TakerTraits} from '@1inch/cross-chain-sdk'
 const coder = AbiCoder.defaultAbiCoder()
 
 export class Wallet {
@@ -26,7 +26,7 @@ export class Wallet {
     }
 
     async tokenBalance(token: string): Promise<bigint> {
-        const tokenContract = new Contract(token.toString(), ERC20.abi, this.provider)
+        const tokenContract = new Contract(token.toString(), abi, this.provider)
 
         return tokenContract.balanceOf(await this.getAddress())
     }
@@ -52,7 +52,7 @@ export class Wallet {
     }
 
     public async getAllowance(token: string, spender: string): Promise<bigint> {
-        const contract = new Contract(token.toString(), ERC20.abi, this.provider)
+        const contract = new Contract(token.toString(), abi, this.provider)
 
         return contract.allowance(await this.getAddress(), spender.toString())
     }
@@ -82,7 +82,7 @@ export class Wallet {
         await tx.wait()
     }
 
-    public async signOrder(srcChainId: number, order: Sdk.CrossChainOrder): Promise<string> {
+    public async signOrder(srcChainId: number, order: CrossChainOrder): Promise<string> {
         const typedData = order.getTypedData(srcChainId)
 
         return this.signer.signTypedData(
