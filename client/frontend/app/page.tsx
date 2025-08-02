@@ -6,6 +6,20 @@ import { useCurrentAccount } from "@mysten/dapp-kit";
 import { useAppKitAccount } from '@reown/appkit/react';
 import { ArrowRightIcon, QrCodeIcon } from "@heroicons/react/24/outline";
 import Navbar from "./components/Navbar";
+import { Transaction } from "@mysten/sui/transactions";
+import { useSignAndExecuteTransaction, useSignTransaction } from "@mysten/dapp-kit";
+import { useSuiClient } from "@mysten/dapp-kit";
+import {uint8ArrayToHex, UINT_40_MAX} from '@1inch/byte-utils'
+import { randomBytes, Result } from "ethers";
+import { SDK, HashLock } from "@1inch/cross-chain-sdk";
+import { keccak256, toUtf8Bytes } from "ethers";
+import {auctionTick, fillStandardOrder, addSafetyDeposit, announceStandardOrder} from '../../../sui/clientpartial'
+
+import {FINALITY_LOCK_DURATION_MS, RESOLVER_CANCELLATION_DURATION_MS, RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS, MAKER_CANCELLATION_DURATION_MS, PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS} from "./func/suitoevm"
+
+// Hardcoded configuration
+const SUI_PACKAGE_ID = "0x14e9f86c5e966674e6dbb28545bbff2052e916d93daba5729dbc475b1b336bb4";
+const resolverAddress = "0x8acfda09209247fd73805b2e2fce19d1400d148ea38bdb9237f15925593eff27";
 
 const tokens = [
 { 
@@ -28,9 +42,13 @@ const tokens = [
 
 // Fixed exchange rates
 const EXCHANGE_RATES = {
-'usdc-to-sui': 1,    // 1 USDC = 0.1 SUI
-'sui-to-usdc': 1      // 1 SUI = 10 USDC
+'usdc-to-sui': 0.1,    // 1 USDC = 0.1 SUI
+'sui-to-usdc': 10      // 1 SUI = 10 USDC
 };
+
+function hexToU8Vector(hexString: string): number[] {
+    return Array.from(Buffer.from(hexString.slice(2), 'hex'));
+}
 
 export default function Home() {
 const [fromToken, setFromToken] = useState(tokens[0]);
@@ -40,15 +58,30 @@ const [receivingAddress, setReceivingAddress] = useState('');
 const [fromAmount, setFromAmount] = useState('');
 const [toAmount, setToAmount] = useState('');
 const [lastEditedField, setLastEditedField] = useState('from');
+const [isSwapping, setIsSwapping] = useState(false);
+const [swapStatus, setSwapStatus] = useState('');
 
 // Sui wallet state
 const currentAccount = useCurrentAccount();
 const isSuiWalletConnected = !!currentAccount;
+const suiClient = useSuiClient();
+const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
+		execute: async ({ bytes, signature }) =>
+			await suiClient.executeTransactionBlock({
+				transactionBlock: bytes,
+				signature,
+				options: {
+					// Raw effects are required so the effects can be reported back to the wallet
+					showRawEffects: true,
+					// Select additional data to return
+					showObjectChanges: true,
+				},
+			}),
+	});
 
 // ETH wallet state from AppKit
 const { address: ethAddress, isConnected: isEthConnected } = useAppKitAccount();
 
-// Get current exchange rate based on token pair
 const getCurrentRate = () => {
   if (fromToken.id === 'usdc' && toToken.id === 'sui') {
     return EXCHANGE_RATES['usdc-to-sui'];
@@ -67,7 +100,6 @@ const handleSwap = () => {
   setToAmount(fromAmount);
 };
 
-// Calculate exchange rate and amounts
 useEffect(() => {
   const rate = getCurrentRate();
   if (lastEditedField === 'from' && fromAmount && !isNaN(parseFloat(fromAmount))) {
@@ -79,7 +111,6 @@ useEffect(() => {
   }
 }, [fromToken.id, toToken.id, fromAmount, toAmount, lastEditedField]);
 
-// Handle from amount change
 const handleFromAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   const value = e.target.value;
   setFromAmount(value);
@@ -94,7 +125,6 @@ const handleFromAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   }
 };
 
-// Handle to amount change
 const handleToAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   const value = e.target.value;
   setToAmount(value);
@@ -109,7 +139,6 @@ const handleToAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   }
 };
 
-// Check if wallet connection is required and available
 const isWalletConnectionValid = () => {
   if (fromToken.id === 'usdc') {
     return isEthConnected; // USDC uses Ethereum wallets
@@ -120,61 +149,220 @@ const isWalletConnectionValid = () => {
   }
 };
 
-// Get required wallet type based on fromToken
 const getRequiredWalletType = () => {
   if (fromToken.id === 'usdc') return 'ethereum';
   if (fromToken.id === 'sui') return 'sui';
   return null;
 };
 
-// Handle swap button click
-const handleSwapNow = () => {
-  const swapData = {
-    fromToken: {
-      id: fromToken.id,
-      name: fromToken.name,
-      fullName: fromToken.fullName,
-      network: fromToken.network,
-      amount: fromAmount
-    },
-    toToken: {
-      id: toToken.id,
-      name: toToken.name,
-      fullName: toToken.fullName,
-      network: toToken.network,
-      amount: toAmount
-    },
-    receivingAddress: receivingAddress,
-    exchangeRate: getCurrentRate(),
-    walletConnected: {
-      sui: isSuiWalletConnected ? currentAccount?.address : null,
-      arbitrum: isEthConnected ? ethAddress : null
-    },
-    timestamp: new Date().toISOString(),
-    rateType: selectedRate
-  };
+// Complete swap implementation following the test file exactly
+const handleSwapNow = async () => {
+  if (isSwapping) return;
+  
+  setIsSwapping(true);
+  setSwapStatus('Starting swap...');
 
-  // Log the data (you can see this in browser console)
-  console.log('Swap Data:', swapData);
+  try {
+    const swapData = {
+      fromToken: {
+        id: fromToken.id,
+        name: fromToken.name,
+        fullName: fromToken.fullName,
+        network: fromToken.network,
+        amount: fromAmount,
+      },
+      toToken: {
+        id: toToken.id,
+        name: toToken.name,
+        fullName: toToken.fullName,
+        network: toToken.network,
+        amount: toAmount,
+      },
+      receivingAddress: receivingAddress,
+      exchangeRate: getCurrentRate(),
+      walletConnected: {
+        sui: isSuiWalletConnected ? currentAccount?.address : null,
+        arbitrum: isEthConnected ? ethAddress : null,
+      },
+      timestamp: new Date().toISOString(),
+      rateType: selectedRate,
+    };
 
-  // Here you can:
-  // 1. Send to an API
-  // sendToAPI(swapData);
-  
-  // 2. Pass to parent component
-  // onSwap?.(swapData);
-  
-  // 3. Store in state management (Redux, Zustand, etc.)
-  // dispatch(initiateSwap(swapData));
-  
-  // 4. Navigate to confirmation page
-  // router.push('/confirm-swap', { state: swapData });
-  
-  // 5. Show confirmation modal
-  // setShowConfirmModal(true);
-  
-  // Example: Alert for now (replace with your logic)
-  alert(`Swapping ${fromAmount} ${fromToken.name} for ${toAmount} ${toToken.name}`);
+    console.log("Swap Data:", swapData);
+
+    // Generate secret and order hash exactly like in test
+    const secret = uint8ArrayToHex(randomBytes(32));
+    const orderHash = uint8ArrayToHex(randomBytes(32));
+    const hashLock = HashLock.forSingleFill(secret);
+    const hash = hashLock.toString();
+    const secretHash = hexToU8Vector(keccak256(toUtf8Bytes(hash)));
+
+    console.log("🔐 Generated secret:", secret);
+    console.log("📋 Generated order hash:", orderHash);
+    console.log("🔒 Hash lock:", hash);
+
+    // Step 1: Announce Order
+    setSwapStatus('Announcing order on Sui...');
+    const txAnnounceOrder = new Transaction();
+
+    txAnnounceOrder.moveCall({
+      target: `${SUI_PACKAGE_ID}::htlc::announce_order`,
+      typeArguments: ["0x2::sui::SUI"],
+      arguments: [
+        txAnnounceOrder.pure.vector("u8", secretHash),
+        txAnnounceOrder.pure.u64(1_000_000_0),
+        txAnnounceOrder.pure.u64(900_000_0),
+        txAnnounceOrder.pure.u64(60 * 1000 * 50),
+        txAnnounceOrder.object("0x6"), // clock
+      ],
+    });
+
+    const createdOrderId = await new Promise<string | undefined>((resolve, reject) => {
+      signAndExecuteTransaction(
+        {
+          transaction: txAnnounceOrder,
+          chain: "sui:testnet",
+        },
+        {
+          onSuccess: (result) => {
+            const created = result.objectChanges?.find(
+              (change) => change.type === "created"
+            )?.objectId;
+            console.log("✅ Order ID created:", created);
+            resolve(created);
+          },
+          onError: (err) => {
+            console.error("❌ Failed to announce order:", err);
+            reject(err);
+          },
+        }
+      );
+    });
+
+    if (!createdOrderId) {
+      throw new Error("Failed to create order");
+    }
+
+    // Step 2: Auction Tick
+    setSwapStatus('Processing auction tick...');
+    const auctionTickRes = await auctionTick(createdOrderId);
+    console.log("✅ Auction Tick Result:", auctionTickRes);
+
+    // Step 3: Fill Order
+    setSwapStatus('Filling order on Sui...');
+    const fillOrderRes = await fillStandardOrder(createdOrderId);
+    console.log("✅ Order filled on Sui chain:", fillOrderRes);
+
+    // Step 4: Create HTLC
+    setSwapStatus('Creating HTLC on Sui...');
+    const tx = new Transaction();
+    const [htlcCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(50_000_000)]);
+
+    tx.moveCall({
+      target: `${SUI_PACKAGE_ID}::htlc::create_htlc_escrow_src`,
+      typeArguments: ["0x2::sui::SUI"],
+      arguments: [
+        tx.object(createdOrderId),
+        tx.makeMoveVec({ elements: [tx.object(htlcCoin)] }),
+        tx.pure.vector("u8", secretHash),
+        tx.pure.u64(FINALITY_LOCK_DURATION_MS),
+        tx.pure.u64(RESOLVER_EXCLUSIVE_UNLOCK_DURATION_MS),
+        tx.pure.u64(RESOLVER_CANCELLATION_DURATION_MS),
+        tx.pure.u64(MAKER_CANCELLATION_DURATION_MS),
+        tx.pure.u64(PUBLIC_CANCELLATION_INCENTIVE_DURATION_MS),
+        tx.pure.address(resolverAddress),
+        tx.object("0x6"), // clock
+      ],
+    });
+
+    const htlcId = await new Promise<string | undefined>((resolve, reject) => {
+      signAndExecuteTransaction(
+        {
+          transaction: tx,
+          chain: "sui:testnet",
+        },
+        {
+          onSuccess: (result) => {
+            const created = result.objectChanges?.find(
+              (change) => change.type === "created"
+            )?.objectId;
+            console.log("✅ HTLC Source Created:", created);
+            resolve(created);
+          },
+          onError: (err) => {
+            console.error("❌ Failed to create HTLC:", err);
+            reject(err);
+          },
+        }
+      );
+    });
+
+    if (!htlcId) {
+      throw new Error("Failed to create HTLC");
+    }
+
+    console.log("✅ HTLC Source created successfully!");
+
+    // Step 5: Execute destination chain swap via API (following test logic exactly)
+    setSwapStatus('Executing destination chain swap...');
+    console.log("🚀 Calling API to execute destination chain swap...");
+    
+    const response = await fetch('./api/execute-swap', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        secret: secret,
+        orderHash: orderHash,
+        htlcId: htlcId,
+        amount: fromAmount
+      }),
+    });
+
+    const apiResult = await response.json();
+    console.log("🔄 API Response:", apiResult);
+
+    if (apiResult.success) {
+      setSwapStatus('Swap completed successfully!');
+      console.log("✅ Complete cross-chain swap successful:", apiResult.data);
+      
+      // Show detailed success message
+      const successMessage = `🎉 Cross-Chain Swap Completed Successfully!
+
+📊 Swap Details:
+• From: ${fromAmount} ${fromToken.name} (${fromToken.network})
+• To: ${toAmount} ${toToken.name} (${toToken.network})
+• Exchange Rate: 1 ${fromToken.name} = ${getCurrentRate()} ${toToken.name}
+
+🔗 Transaction Details:
+• Sui HTLC ID: ${htlcId}
+• Destination Escrow: ${apiResult.data.dstEscrowAddress}
+• Destination Tx: ${apiResult.data.txHash}
+
+✅ Your ${toToken.name} tokens are now available at: ${receivingAddress}`;
+
+      alert(successMessage);
+      
+      // Reset form
+      setFromAmount('');
+      setToAmount('');
+      setReceivingAddress('');
+      
+    } else {
+      throw new Error(apiResult.error || 'Destination swap failed');
+    }
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error("❌ Swap failed:", error);
+    setSwapStatus(`Swap failed: ${errorMessage}`);
+    alert(`❌ Swap Failed: ${errorMessage}`);
+  } finally {
+    setIsSwapping(false);
+    // Clear status after 5 seconds
+    setTimeout(() => setSwapStatus(''), 5000);
+  }
 };
 
 return (
