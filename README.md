@@ -64,38 +64,22 @@ Funds are locked using a `hashlock` (secret hash). Swap completion requires the 
 
 ---
 
-### ⚙️ Partial Fills & Secret Indexing
+## ⚙️ Partial Fills & Secret Indexing
 
-Partial fills are supported through Merkle-based secret indexing. The Sui contract enforces a deterministic calculation of `expected_secret_index` for each partial fill to prevent double-fills.
+Partial fill support is enabled via **Merkle-based secret indexing**. Each `PartialOrder` commits to a Merkle root of secret hashes, allowing the protocol to validate unique secrets per fill.
 
-The index is calculated by:
+The field **expected_secret_index** of the function `fill_order_partial` is calculated using `calculateExpectedSecretIndex` in the [`clientpartial.ts`]() file based on the fill progress. This index is then submitted with each partial fill. The Move contract enforces that:
 
-```ts
-const idx = Number((BigInt(secrets.length - 1)))
-const fillAmount1 = totalAmount / idx;
-let remainingAmount = 100_000_000;
-const expectedIndex = calculateExpectedSecretIndex(totalAmount, remainingAmount, fillAmount1, idx);
+- 🔒 The same secret index cannot be used more than once  
+- 📈 Index progression aligns with the `parts_count` and fill ratio  
+- ✅ Secrets are bound to their claimed Merkle index (future-proof for proof validation)
 
-function calculateExpectedSecretIndex(
-  totalOrderAmount: number,
-  remainingAmount: number,
-  fillAmount: number,
-  partsCount: number
-): number {
-  const currentFilledAmount = totalOrderAmount - remainingAmount;
-  const newFilledAmount = currentFilledAmount + fillAmount;
-  const targetPercentageNumerator = newFilledAmount * (partsCount + 1);
-  const targetPercentageDenominator = totalOrderAmount;
+> This ensures consistency with the protocol logic defined in the whitepaper and prevents secret reuse or double-fills.
 
-  let expectedIndex = Math.floor(targetPercentageNumerator / targetPercentageDenominator);
-  if (targetPercentageNumerator % targetPercentageDenominator !== 0) {
-    expectedIndex += 1;
-  }
-  return expectedIndex;
-}
-```
+The off-chain logic used to calculate this index is implemented [in the client repo](./path/to/client/lib/calculateExpectedSecretIndex.ts).  
+The Move-side validation occurs during `fill_order_partial`, where the submitted index is checked against the current fill state.
 
-This logic aligns with the Move contract's internal `_isValidPartialFill` guard. Once Merkle proof integration is complete, each partial fill will also include a cryptographic proof to validate the secret hash at that index against the committed Merkle root.
+Once Merkle proof integration is live, the resolver will also submit a cryptographic proof to confirm the secret hash belongs to the committed Merkle tree.
 
 ---
 
