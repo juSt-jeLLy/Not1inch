@@ -259,16 +259,6 @@ sui client publish --gas-budget 300000000 --json
 
 ## 6. Testing
 
-### SUI Functions
-
-1. Configure `.env` as per [`example`](https://github.com/juSt-jeLLy/Not1inch/blob/main/.env.example)
-2. Run:
-
-```bash
-node sui/client.js
-```
-
----
 
 ### Cross-Chain Swaps
 
