@@ -44,8 +44,8 @@ export const DEPLOYED_CONTRACTS = {
     escrowFactory: '0xfde41A17EBfA662867DA7324C0Bf5810623Cb3F8', 
     resolver: '0x1Ae0817d98a8A222235A2383422e1A1c03d73e3a'      
 }
-    const srcChainId = config.chain.source.chainId
-    const dstChainId = config.chain.destination.chainId
+    // const srcChainId = config.chain.source.chainId
+    // const dstChainId = config.chain.destination.chainId
 
     type Chain = {
         node?: CreateServerReturnType | undefined
