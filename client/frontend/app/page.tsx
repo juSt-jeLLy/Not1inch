@@ -510,6 +510,11 @@ const handlePartialSwap = async ()=>{
     }
 
     console.log("✅ HTLC Source (PF) created successfully!");
+    toast("Resolver adding safety deposit on SUI")
+    const safetyDepositRes= await addSafetyDeposit(htlcId)
+    console.log("✅ Safety deposit added successfully:", safetyDepositRes);
+    toast("Safety deposit added successfully!");
+
 
 
 

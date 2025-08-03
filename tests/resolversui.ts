@@ -1,6 +1,7 @@
 import {Interface, Signature, TransactionRequest} from 'ethers'
 import Sdk from '@1inch/cross-chain-sdk'
-import Contract from '../dist/contracts/Resolver.sol/Resolver.json'
+import {abi} from '../dist/contracts/Resolver.sol/Resolver.json'
+import {CrossChainOrder, TakerTraits, Address, Immutables} from '@1inch/cross-chain-sdk'
 
 export class Resolver {
     private readonly iface: Interface
@@ -9,7 +10,7 @@ export class Resolver {
         public readonly srcAddress: string,
         public readonly dstAddress: string
     ) {
-        this.iface = this.createInterfaceWithFallback(Contract.abi)
+        this.iface = this.createInterfaceWithFallback(abi)
     }
 
     private createInterfaceWithFallback(abi: any[]): Interface {
@@ -56,15 +57,15 @@ export class Resolver {
 
     public deploySrc(
         chainId: number,
-        order: Sdk.CrossChainOrder,
+        order: CrossChainOrder,
         signature: string,
-        takerTraits: Sdk.TakerTraits,
+        takerTraits: TakerTraits,
         amount: bigint,
         hashLock = order.escrowExtension.hashLockInfo
     ): TransactionRequest {
         const {r, yParityAndS: vs} = Signature.from(signature)
         const {args, trait} = takerTraits.encode()
-        const immutables = order.toSrcImmutables(chainId, new Sdk.Address(this.srcAddress), amount, hashLock)
+        const immutables = order.toSrcImmutables(chainId, new Address(this.srcAddress), amount, hashLock)
 
         return {
             to: this.srcAddress,
@@ -82,7 +83,7 @@ export class Resolver {
     }
 
     public deployDst(
-        immutables: Sdk.Immutables,
+        immutables: Immutables,
         srcCancellationTimestamp?: bigint
     ): TransactionRequest {
         const cancellationTimestamp = srcCancellationTimestamp || 
@@ -100,9 +101,9 @@ export class Resolver {
 
     public withdraw(
         side: 'src' | 'dst',
-        escrow: Sdk.Address,
+        escrow: Address,
         secret: string,
-        immutables: Sdk.Immutables
+        immutables: Immutables
     ): TransactionRequest {
         return {
             to: side === 'src' ? this.srcAddress : this.dstAddress,
@@ -110,7 +111,7 @@ export class Resolver {
         }
     }
 
-    public cancel(side: 'src' | 'dst', escrow: Sdk.Address, immutables: Sdk.Immutables): TransactionRequest {
+    public cancel(side: 'src' | 'dst', escrow: Address, immutables: Immutables): TransactionRequest {
         return {
             to: side === 'src' ? this.srcAddress : this.dstAddress,
             data: this.iface.encodeFunctionData('cancel', [escrow.toString(), immutables.build()])

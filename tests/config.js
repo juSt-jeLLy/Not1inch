@@ -1,27 +1,25 @@
-import 'dotenv/config' 
-import {z} from 'zod'
-import Sdk from '@1inch/cross-chain-sdk'
-import { NetworkEnum } from '@1inch/cross-chain-sdk'
-import * as process from 'node:process'
-
-const bool = z
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.config = void 0;
+require("dotenv/config");
+var zod_1 = require("zod");
+var cross_chain_sdk_1 = require("@1inch/cross-chain-sdk");
+var process = require("node:process");
+var bool = zod_1.z
     .string()
-    .transform((v) => v.toLowerCase() === 'true')
-    .pipe(z.boolean())
-
-const ConfigSchema = z.object({
-    SRC_CHAIN_RPC: z.string().url(),
-    DST_CHAIN_RPC: z.string().url(),
+    .transform(function (v) { return v.toLowerCase() === 'true'; })
+    .pipe(zod_1.z.boolean());
+var ConfigSchema = zod_1.z.object({
+    SRC_CHAIN_RPC: zod_1.z.string().url(),
+    DST_CHAIN_RPC: zod_1.z.string().url(),
     SRC_CHAIN_CREATE_FORK: bool.default('false'),
     DST_CHAIN_CREATE_FORK: bool.default('false')
-})
-
-const fromEnv = ConfigSchema.parse(process.env)
-
-export const config = {
+});
+var fromEnv = ConfigSchema.parse(process.env);
+exports.config = {
     chain: {
         source: {
-            chainId: NetworkEnum.ETHEREUM,
+            chainId: cross_chain_sdk_1.NetworkEnum.ETHEREUM,
             url: fromEnv.SRC_CHAIN_RPC,
             createFork: fromEnv.SRC_CHAIN_CREATE_FORK,
             limitOrderProtocol: '0x111111125421ca6dc452d289314280a0f8842a65',
@@ -35,7 +33,7 @@ export const config = {
             }
         },
         destination: {
-            chainId: NetworkEnum.ARBITRUM,
+            chainId: cross_chain_sdk_1.NetworkEnum.ARBITRUM,
             url: fromEnv.DST_CHAIN_RPC,
             createFork: fromEnv.DST_CHAIN_CREATE_FORK,
             limitOrderProtocol: '0x111111125421ca6dc452d289314280a0f8842a65',
@@ -49,6 +47,4 @@ export const config = {
             }
         }
     }
-} as const
-
-export type ChainConfig = (typeof config.chain)['source' | 'destination']
+};
