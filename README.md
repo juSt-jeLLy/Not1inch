@@ -266,6 +266,10 @@ sui client publish --gas-budget 300000000 --json
 (2) 0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66: "0x4207ebd97F999F142fFD3696dD76A61193b23e89" Resolver
 ```
 ```shell
+export $(grep -v '^#' .env | xargs)
+```
+
+```shell
 pnpm install
 ```
 ```shell
