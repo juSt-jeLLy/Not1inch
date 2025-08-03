@@ -257,8 +257,8 @@ node sui/client.js
 #### Set Up
 
 ```
-User:    0x38c4...fedc → 0x3961...
-Resolver: 0x1d02...e66 → 0x4207...
+User:    0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fedc → 0x39619C9fe2AF793f847D112123F62c01df0A0025
+Resolver: 0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66 → 0x4207ebd97F999F142fFD3696dD76A61193b23e89
 ```
 
 #### Commands
