@@ -73,6 +73,7 @@ Funds are locked using a `hashlock` (secret hash). Swap completion requires the 
 - [SUI → EVM Swap](https://github.com/juSt-jeLLy/Not1inch/blob/main/tests/suitoevm.spec.ts)
 - [EVM → SUI Partial Fills](https://github.com/juSt-jeLLy/Not1inch/blob/main/tests/evmtosuipartialfills.spec.ts)
 - [SUI → EVM Partial Fills](https://github.com/juSt-jeLLy/Not1inch/blob/main/tests/suitoevmpartialfills.spec.ts)
+- [Crosschain swaps examples with screenshots](https://yagensh.gitbook.io/not1inch/documentation)
 
 ---
 
