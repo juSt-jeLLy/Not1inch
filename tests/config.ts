@@ -1,7 +1,5 @@
-import 'dotenv/config' 
 import {z} from 'zod'
 import Sdk from '@1inch/cross-chain-sdk'
-import { NetworkEnum } from '@1inch/cross-chain-sdk'
 import * as process from 'node:process'
 
 const bool = z
@@ -21,7 +19,7 @@ const fromEnv = ConfigSchema.parse(process.env)
 export const config = {
     chain: {
         source: {
-            chainId: NetworkEnum.ETHEREUM,
+            chainId: Sdk.NetworkEnum.ETHEREUM,
             url: fromEnv.SRC_CHAIN_RPC,
             createFork: fromEnv.SRC_CHAIN_CREATE_FORK,
             limitOrderProtocol: '0x111111125421ca6dc452d289314280a0f8842a65',
@@ -35,7 +33,7 @@ export const config = {
             }
         },
         destination: {
-            chainId: NetworkEnum.ARBITRUM,
+            chainId: Sdk.NetworkEnum.ARBITRUM,
             url: fromEnv.DST_CHAIN_RPC,
             createFork: fromEnv.DST_CHAIN_CREATE_FORK,
             limitOrderProtocol: '0x111111125421ca6dc452d289314280a0f8842a65',

@@ -108,7 +108,7 @@ describe('Resolving example', () => {
 
     // eslint-disable-next-line max-lines-per-function
     describe('Fill', () => {
-        it('should swap Ethereum USDC -> SUI USDC. Single fill only', async () => {
+        it('should swap Ethereum USDC 100 -> SUI USDC 0.05 . Partial fills (50%) only', async () => {
             const initialBalances = await getBalances(
                 config.chain.source.tokens.USDC.address
                 

@@ -41,8 +41,8 @@ const suiKeypairResolver = Ed25519Keypair.fromSecretKey(Buffer.from(SUI_PRIVATE_
 const suiAddressResolver = suiKeypairResolver.getPublicKey().toSuiAddress();
 
 export const DEPLOYED_CONTRACTS = {
-    escrowFactory: '0xfde41A17EBfA662867DA7324C0Bf5810623Cb3F8', 
-    resolver: '0x1Ae0817d98a8A222235A2383422e1A1c03d73e3a'      
+    escrowFactory: '0xCB818a64DD9AA858b96D83ccA5A628fF5452f552', 
+    resolver: '0xB103C05FE2451b9b09dbE45Ad78e0C294DD22AaA'      
 }
 
 describe('Resolving example', () => {
@@ -68,7 +68,7 @@ describe('Resolving example', () => {
     }
 
     beforeAll(async () => {
-        dst = await initChain(config.chain.destination)
+        dst = await initChainWithPredeployedContracts(config.chain.destination)
 
         dstChainUser = new Wallet(userPk, dst.provider)
         dstChainResolver = new Wallet(resolverPk, dst.provider)
@@ -118,7 +118,7 @@ describe('Resolving example', () => {
     })
 
     describe('Fill', () => {
-        it('should swap Ethereum USDC -> SUI USDC. Single fill only', async () => {
+        it('should swap  SUI  0.05 ->  Ethereum USDC 100 . Partial fill only', async () => {
             const secrets = Array.from({length: 11}).map(() => uint8ArrayToHex(randomBytes(32))) // note: use crypto secure random number in the real world
             const secretHashes = secrets.map((s) => Sdk.HashLock.hashSecret(s))
             const leaves = Sdk.HashLock.getMerkleLeaves(secrets)
@@ -173,7 +173,7 @@ describe('Resolving example', () => {
             // create HTLCsrc on Sui chain
             console.log("create HTLCsrc on Sui chain ")
 
-            const htlcSrc = await createHTLCSrcPartial(partialOrderId,targetSecretHash, suiAddressResolver,expectedIndex)
+            const htlcSrc = await createHTLCSrcPartial(partialOrderId,hash, suiAddressResolver,expectedIndex)
             if (!htlcSrc) throw new Error('htlcSrc is undefined');
             const htlcId = htlcSrc.toString();
             if (!htlcId) throw new Error('htlcId is undefined');

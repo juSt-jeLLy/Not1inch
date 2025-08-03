@@ -80,7 +80,7 @@ describe('Resolving example', () => {
         await dstChainResolver.transferToken(
             config.chain.destination.tokens.USDC.address,
             dst.resolver, // This is the resolver CONTRACT address
-            parseUnits('0.1', 6) // Give contract enough USDC
+            parseUnits('100', 6) // Give contract enough USDC
         );
 
         // ✅ 2. Make the resolver CONTRACT approve the escrow factory
@@ -116,7 +116,7 @@ describe('Resolving example', () => {
     })
 
     describe('Fill', () => {
-        it('should swap Ethereum USDC -> SUI USDC. Single fill only', async () => {
+        it('should swap  SUI 0.05 -> Ethereum USDC 100. Single fill only', async () => {
             const secret = uint8ArrayToHex(randomBytes(32))
             console.log("secret",secret)
             const hashLock = Sdk.HashLock.forSingleFill(secret);
@@ -189,7 +189,7 @@ describe('Resolving example', () => {
                 maker: new Address(await dstChainUser.getAddress()),
                 taker: new Address(dst.resolver),
                 token: new Address(config.chain.destination.tokens.USDC.address),
-                amount: parseUnits('0.1', 6), // 99 USDC
+                amount: parseUnits('100', 6), // 99 USDC
                 safetyDeposit: parseEther('0.00001'),
                 timeLocks: timeLocks
             });

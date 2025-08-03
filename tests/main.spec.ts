@@ -36,8 +36,8 @@ const userPk = '0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fe
 const resolverPk = '0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66'
 
 const DEPLOYED_CONTRACTS = {
-    escrowFactory: '0xfde41A17EBfA662867DA7324C0Bf5810623Cb3F8', 
-    resolver: '0x1Ae0817d98a8A222235A2383422e1A1c03d73e3a'      
+    escrowFactory: '0xCB818a64DD9AA858b96D83ccA5A628fF5452f552', 
+    resolver: '0xB103C05FE2451b9b09dbE45Ad78e0C294DD22AaA'      
 }
 
 // eslint-disable-next-line max-lines-per-function
@@ -107,7 +107,7 @@ src = await initChain(config.chain.source)
 
     // eslint-disable-next-line max-lines-per-function
     describe('Fill', () => {
-        it('should swap Ethereum USDC -> SUI USDC. Single fill only', async () => {
+        it('should swap Ethereum USDC 100 -> SUI 0.05 . Single fill only', async () => {
             const initialBalances = await getBalances(
                 config.chain.source.tokens.USDC.address
                 
@@ -123,7 +123,7 @@ src = await initChain(config.chain.source)
                     salt: Sdk.randBigInt(1000n),
                     maker: new Address(await srcChainUser.getAddress()),
                     makingAmount: parseUnits('100', 6),
-                    takingAmount: parseUnits('99', 6),
+                    takingAmount: parseUnits('100', 6),
                     makerAsset: new Address(config.chain.source.tokens.USDC.address),
                     takerAsset: new Address(config.chain.source.tokens.USDC.address)
                 },
@@ -216,6 +216,10 @@ src = await initChain(config.chain.source)
 
             await increaseTime(11)
             // User shares key after validation of dst escrow deployment
+
+            console.log("secret: ",secret)
+
+
            console.log("claiming funds on the destination chain")
            const htlcId = htlcId_safety.toString();
             const claim_htlc = await claimHTLCdst(htlcId , secret)

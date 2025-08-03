@@ -8,12 +8,9 @@ import Sdk from '@1inch/cross-chain-sdk'
 
 dotenvConfig();
 
-// const SUI_PRIVATE_KEY_RESOLVER = process.env.SUI_PRIVATE_KEY_RESOLVER!;
-// const SUI_PRIVATE_KEY_USER = process.env.SUI_PRIVATE_KEY_USER!;
 const SUI_PRIVATE_KEY_RESOLVER = "e3cbc98f1be6f9caf78c2fb3ba2a19de1e49fdc4f05ddd082e37a18ef5252918";
 const SUI_PRIVATE_KEY_USER = "1d6b12793508282886435d5896c1898c1f05e744f64c8c9faeac1bdfdc1b5105";
-const SUI_PACKAGE_ID="0x14e9f86c5e966674e6dbb28545bbff2052e916d93daba5729dbc475b1b336bb4"
-// const SUI_PACKAGE_ID  = process.env.SUI_PACKAGE_ID!;
+const SUI_PACKAGE_ID  = process.env.SUI_PACKAGE_ID!;
 const suiClient       = new SuiClient({ url: getFullnodeUrl('testnet') });
 
 const suiKeypairResolver = Ed25519Keypair.fromSecretKey(Buffer.from(SUI_PRIVATE_KEY_RESOLVER, 'hex'));
@@ -109,8 +106,8 @@ export async function fillStandardOrder(orderId: string) {
 }
 
 // --- CREATE HTLC DST (STANDARD) ---
-export async function createHTLCDst(secret_hash: string, makerAddress: string, originalOrderId: string) {
-    const secretHash = hexToU8Vector(secret_hash);
+export async function createHTLCDst(secretPreimage: string, makerAddress: string, originalOrderId: string) {
+    const secretHash = hexToU8Vector(keccak256(toUtf8Bytes(secretPreimage)));
     const tx = new Transaction();
 
     const [htlcCoin, safetyDepositCoin] = tx.splitCoins(tx.gas, [
@@ -184,9 +181,9 @@ export async function createHTLCSrc(secretPreimage: string, orderId: string, res
 export async function claimHTLCdst(htlcId: string, secretPreimage: string) {
     console.log('Attempting to claim HTLC ID:', htlcId);
     const tx = new Transaction();
-    // const hashLock = Sdk.HashLock.forSingleFill(secretPreimage);
-    // const hash = hashLock.toString();
-    const secretPreimageNumberArray = Array.from(toUtf8Bytes(secretPreimage));
+    const hashLock = Sdk.HashLock.forSingleFill(secretPreimage);
+    const hash = hashLock.toString();
+    const secretPreimageNumberArray = Array.from(toUtf8Bytes(hash));
 
     tx.moveCall({
         target: `${SUI_PACKAGE_ID}::htlc::claim_htlc`,
