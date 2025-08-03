@@ -4,12 +4,12 @@
 
 ---
 
-## 1. About Not1uinch
+## 1. About Not1inch
 
 This project extends the **1inch Fusion+** protocol on **Sui**, featuring:
 
 - Competitive Dutch auctions
-- Partial fills via Merkle Trees
+- Partial fills 
 - Multi-stage timelocks for secure swap execution
 
 ---
@@ -113,39 +113,31 @@ This logic aligns with the Move contract's internal `_isValidPartialFill` guard.
 
 ### ⚐️ Cross-Chain Swap Flow
 
-#### Case 1: SUI → EVM
-
-Maker locks funds on Sui. Resolver commits on EVM.\
+[Cross chain swap examples with screenshots](https://yagensh.gitbook.io/not1inch/documentation)
 
 
+#### Case 1: Sui is the Source Chain (SUI → EVM)
+Maker funds are on Sui. Resolver commits funds on EVM.
 
+![SUI → EVM Cross-Chain Swap](https://github.com/user-attachments/assets/e76cb5a4-fbf0-498b-b619-572f0c2f8bb6)
 
-#### Case 2: EVM → SUI
+#### Case 2: EVM is the Source Chain (EVM → SUI)
+Maker funds are on EVM. Resolver commits funds on Sui.
 
-Maker locks funds on EVM. Resolver commits on Sui.\
+![EVM → SUI Cross-Chain Swap](https://github.com/user-attachments/assets/22fb8415-aeb5-4ff0-ae42-bd73648a7a18)
 
+### Partial Fill Mechanism
 
+Large orders can be filled by multiple resolvers using a Merkle Tree of secret hashes.
 
+![Partial Fill & Merkle Tree](https://github.com/user-attachments/assets/1b19442d-2615-45ff-9408-119fc5765eca)
 
----
+### Multi-Stage Timelocks for HTLCs
 
-### 🧹 Partial Fill Mechanism
+Each `HashedTimelockEscrow` follows strict timelock rules for claiming/cancelling.
 
-Resolves large orders in parts using Merkle-proven secrets.\
+![Multi-Stage Timelocks](https://github.com/user-attachments/assets/fa102477-6d4e-4132-a97d-c428e847bbe9)
 
-
-
-
----
-
-### ⏱️ Multi-Stage Timelocks
-
-Each `HashedTimelockEscrow` enforces these stages:\
-
-
-
-
----
 
 ## 4. Smart Contract Details
 
@@ -299,43 +291,41 @@ node sui/client.js
 #### Set Up
 
 ```
-User:    0x38c4...fedc → 0x3961...
-Resolver: 0x1d02...e66 → 0x4207...
+(1) 0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fedc: "0x39619C9fe2AF793f847D112123F62c01df0A0025" User
+(2) 0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66: "0x4207ebd97F999F142fFD3696dD76A61193b23e89" Resolver
 ```
-
-#### Commands
-
-```bash
+```shell
 pnpm install
+```
+```shell
 forge install
+```
+```shell
 forge build
 ```
+#### Then Run
 
-#### Run Tests
+For EVM to SUI standard order 
 
-- EVM → SUI Standard
-
-```bash
+```shell
 pnpm test main.spec.ts
 ```
+For SUI to EVM standard order 
 
-- SUI → EVM Standard
-
-```bash
+```shell
 pnpm test suitoevm.spec.ts
 ```
+For SUI to EVM Partial Fills
 
-- SUI → EVM Partial Fills
-
-```bash
+```shell
 pnpm test suitoevmpartialfills.spec.ts
 ```
+For EVM to SUI Partial Fills
 
-- EVM → SUI Partial Fills
-
-```bash
+```shell
 pnpm test evmtosuipartialfills.spec.ts
 ```
+
 
 ---
 
@@ -344,12 +334,12 @@ pnpm test evmtosuipartialfills.spec.ts
 **Path:** `client/frontend`
 
 ### Stack:
-
+-`@mysten/dapp-kit`
 - `@mysten/sui/transactions` for TX building
 - `Ed25519Keypair` for key management
 - `suiClient` for chain interactions
 - `ethers.js` for `keccak256` hashing
-- Local Merkle logic for secret indexing
+- `merkletreejs`
 
 ---
 
