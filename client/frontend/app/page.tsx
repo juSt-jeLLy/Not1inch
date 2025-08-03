@@ -316,51 +316,51 @@ const handleSwapNow = async () => {
     setSwapStatus('Executing destination chain swap...');
     console.log("🚀 Calling API to execute destination chain swap...");
     
-    const response = await fetch('./api/execute-swap', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        secret: secret,
-        orderHash: orderHash,
-        htlcId: htlcId,
-        amount: fromAmount
-      }),
-    });
+//     const response = await fetch('./api/execute-swap', {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//       },
+//       body: JSON.stringify({
+//         secret: secret,
+//         orderHash: orderHash,
+//         htlcId: htlcId,
+//         amount: fromAmount
+//       }),
+//     });
 
-    const apiResult = await response.json();
-    console.log("🔄 API Response:", apiResult);
+//     const apiResult = await response.json();
+//     console.log("🔄 API Response:", apiResult);
 
-    if (apiResult.success) {
-      setSwapStatus('Swap completed successfully!');
-      console.log("✅ Complete cross-chain swap successful:", apiResult.data);
+//     if (apiResult.success) {
+//       setSwapStatus('Swap completed successfully!');
+//       console.log("✅ Complete cross-chain swap successful:", apiResult.data);
       
-      // Show detailed success message
-      const successMessage = `🎉 Cross-Chain Swap Completed Successfully!
+//       // Show detailed success message
+//       const successMessage = `🎉 Cross-Chain Swap Completed Successfully!
 
-📊 Swap Details:
-• From: ${fromAmount} ${fromToken.name} (${fromToken.network})
-• To: ${toAmount} ${toToken.name} (${toToken.network})
-• Exchange Rate: 1 ${fromToken.name} = ${getCurrentRate()} ${toToken.name}
+// 📊 Swap Details:
+// • From: ${fromAmount} ${fromToken.name} (${fromToken.network})
+// • To: ${toAmount} ${toToken.name} (${toToken.network})
+// • Exchange Rate: 1 ${fromToken.name} = ${getCurrentRate()} ${toToken.name}
 
-🔗 Transaction Details:
-• Sui HTLC ID: ${htlcId}
-• Destination Escrow: ${apiResult.data.dstEscrowAddress}
-• Destination Tx: ${apiResult.data.txHash}
+// 🔗 Transaction Details:
+// • Sui HTLC ID: ${htlcId}
+// • Destination Escrow: ${apiResult.data.dstEscrowAddress}
+// • Destination Tx: ${apiResult.data.txHash}
 
-✅ Your ${toToken.name} tokens are now available at: ${receivingAddress}`;
+// ✅ Your ${toToken.name} tokens are now available at: ${receivingAddress}`;
 
-      alert(successMessage);
+//       alert(successMessage);
       
-      // Reset form
-      setFromAmount('');
-      setToAmount('');
-      setReceivingAddress('');
+//       // Reset form
+//       setFromAmount('');
+//       setToAmount('');
+//       setReceivingAddress('');
     
-    } else {
-      throw new Error(apiResult.error || 'Destination swap failed');
-    }
+//     } else {
+//       throw new Error(apiResult.error || 'Destination swap failed');
+//     }
   }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -514,9 +514,6 @@ const handlePartialSwap = async ()=>{
     const safetyDepositRes= await addSafetyDeposit(htlcId)
     console.log("✅ Safety deposit added successfully:", safetyDepositRes);
     toast("Safety deposit added successfully!");
-
-
-
 
 }
 return (
