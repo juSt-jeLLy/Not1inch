@@ -64,6 +64,41 @@ Funds are locked using a `hashlock` (secret hash). Swap completion requires the 
 
 ---
 
+### ⚙️ Partial Fills & Secret Indexing
+
+Partial fills are supported through Merkle-based secret indexing. The Sui contract enforces a deterministic calculation of `expected_secret_index` for each partial fill to prevent double-fills.
+
+The index is calculated by:
+
+```ts
+const idx = Number((BigInt(secrets.length - 1)))
+const fillAmount1 = totalAmount / idx;
+let remainingAmount = 100_000_000;
+const expectedIndex = calculateExpectedSecretIndex(totalAmount, remainingAmount, fillAmount1, idx);
+
+function calculateExpectedSecretIndex(
+  totalOrderAmount: number,
+  remainingAmount: number,
+  fillAmount: number,
+  partsCount: number
+): number {
+  const currentFilledAmount = totalOrderAmount - remainingAmount;
+  const newFilledAmount = currentFilledAmount + fillAmount;
+  const targetPercentageNumerator = newFilledAmount * (partsCount + 1);
+  const targetPercentageDenominator = totalOrderAmount;
+
+  let expectedIndex = Math.floor(targetPercentageNumerator / targetPercentageDenominator);
+  if (targetPercentageNumerator % targetPercentageDenominator !== 0) {
+    expectedIndex += 1;
+  }
+  return expectedIndex;
+}
+```
+
+This logic aligns with the Move contract's internal `_isValidPartialFill` guard. Once Merkle proof integration is complete, each partial fill will also include a cryptographic proof to validate the secret hash at that index against the committed Merkle root.
+
+---
+
 ### 🔗 Code & Examples
 
 - [SUI Chain Transactions](https://suiscan.xyz/testnet/object/0x14e9f86c5e966674e6dbb28545bbff2052e916d93daba5729dbc475b1b336bb4/tx-blocks)
@@ -73,20 +108,23 @@ Funds are locked using a `hashlock` (secret hash). Swap completion requires the 
 - [SUI → EVM Swap](https://github.com/juSt-jeLLy/Not1inch/blob/main/tests/suitoevm.spec.ts)
 - [EVM → SUI Partial Fills](https://github.com/juSt-jeLLy/Not1inch/blob/main/tests/evmtosuipartialfills.spec.ts)
 - [SUI → EVM Partial Fills](https://github.com/juSt-jeLLy/Not1inch/blob/main/tests/suitoevmpartialfills.spec.ts)
-- [Crosschain swaps examples with screenshots](https://yagensh.gitbook.io/not1inch/documentation)
 
 ---
 
-### 🔀 Cross-Chain Swap Flow
+### ⚐️ Cross-Chain Swap Flow
 
 #### Case 1: SUI → EVM
 
 Maker locks funds on Sui. Resolver commits on EVM.\
 
 
+
+
 #### Case 2: EVM → SUI
 
 Maker locks funds on EVM. Resolver commits on Sui.\
+
+
 
 
 ---
@@ -96,11 +134,15 @@ Maker locks funds on EVM. Resolver commits on Sui.\
 Resolves large orders in parts using Merkle-proven secrets.\
 
 
+
+
 ---
 
 ### ⏱️ Multi-Stage Timelocks
 
 Each `HashedTimelockEscrow` enforces these stages:\
+
+
 
 
 ---
@@ -257,8 +299,8 @@ node sui/client.js
 #### Set Up
 
 ```
-User:    0x38c4aadf07a344bd5f5baedc7b43f11a9b863cdd16242f3b94a53541ad19fedc → 0x39619C9fe2AF793f847D112123F62c01df0A0025
-Resolver: 0x1d02f466767e86d82b6c647fc7be69dc1bc98931a99ac9666d8b591bb0cc1e66 → 0x4207ebd97F999F142fFD3696dD76A61193b23e89
+User:    0x38c4...fedc → 0x3961...
+Resolver: 0x1d02...e66 → 0x4207...
 ```
 
 #### Commands
