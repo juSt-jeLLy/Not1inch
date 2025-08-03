@@ -41,7 +41,6 @@ module sui_htlc_contract::htlc {
     const STATUS_CANCELLED: u8 = 2;
 
     // Struct and event definitions
-
     public struct Order<phantom T> has key {
         id: UID,
         maker: address,
@@ -62,6 +61,8 @@ module sui_htlc_contract::htlc {
         hash_lock_index_used: u64,
     }
 
+    //if partial fills are enabled then this definition of order is used
+
     public struct PartialOrder<phantom T> has key {
         id: UID,
         maker: address,
@@ -79,6 +80,7 @@ module sui_htlc_contract::htlc {
     }
 
     // Events
+
     public struct OrderAnnouncedEvent has copy, drop {
         order_id: ID,
         maker: address,
@@ -154,6 +156,9 @@ module sui_htlc_contract::htlc {
         safety_deposit_amount: u64,
     }
 
+
+    //definition of the escrow 
+    //includes all the important timelocks and other info
     public struct HashedTimelockEscrow<phantom T> has key, store {
         id: UID,
         secret_hash: vector<u8>,
@@ -174,6 +179,7 @@ module sui_htlc_contract::htlc {
 
     // --- Core Auction & Standard HTLC Functions ---
 
+    //called by the user/maker to announce standard order( doesnt allow partial fills )
     public entry fun announce_order<T>(
         secret_hash: vector<u8>,
         start_price: u64,
@@ -201,6 +207,7 @@ module sui_htlc_contract::htlc {
         transfer::share_object(order);
     }
 
+    //to get the current price (used for the standard order which doesn't allow partial fills)
     public entry fun auction_tick<T>(
         order: &mut Order<T>,
         clock: &Clock,
@@ -217,7 +224,7 @@ module sui_htlc_contract::htlc {
         event::emit(AuctionTickEvent { order_id: object::id(order), current_price });
     }
 
-    
+    // used to get the current_price of the dutch auction when partial_fills are allowed
     public entry fun partial_auction_tick<T>(
         order: &mut PartialOrder<T>,
         clock: &Clock,
@@ -234,6 +241,7 @@ module sui_htlc_contract::htlc {
         event::emit(AuctionTickEvent { order_id: object::id(order), current_price });
     }
 
+    //called by resolver to fill the standard orders ( the provided bid_price must pe >= current_price gotten from the auction_tick)
     public entry fun fill_order<T>(
         order: &mut Order<T>,
         bid_price: u64,
@@ -256,6 +264,8 @@ module sui_htlc_contract::htlc {
         event::emit(OrderFilledEvent { order_id: object::id(order), resolver, fill_price: bid_price });
     }
 
+
+    //called by resolver to add the safety deposits
     public entry fun add_safety_deposit<T>(
         htlc: &mut HashedTimelockEscrow<T>,
         deposit: Coin<0x2::sui::SUI>,
@@ -266,6 +276,8 @@ module sui_htlc_contract::htlc {
         balance::join(&mut htlc.safety_deposit, sd);
     }
 
+    //function called by the user/maker to create escrow when the source is sui
+    //to create escrow
     public entry fun create_htlc_escrow_src<T>(
         order: &mut Order<T>,
         coins: vector<Coin<T>>,
@@ -294,6 +306,7 @@ while (i < vector::length(&coins_clone)) {
 };
 assert!(total_amount >= order.fill_price, E_FUNDS_LESS_THAN_FILL_PRICE);
 
+
 internal_create_htlc_escrow(
     coins_clone,
     coin::zero<0x2::sui::SUI>(ctx),
@@ -314,6 +327,8 @@ internal_create_htlc_escrow(
 
     }
 
+    //called by the resovler/taker on behalf of the maker/user when the dst is sui 
+    //to create escrow
     public entry fun create_htlc_escrow_dst<T>(
         coins: vector<Coin<T>>,
         resolver_safety_deposit: Coin<0x2::sui::SUI>,
@@ -348,7 +363,8 @@ internal_create_htlc_escrow(
             ctx
         );
     }
-
+    
+    //internal function 
     fun internal_create_htlc_escrow<T>(
         coins: vector<Coin<T>>,
         safety_deposit_coin: Coin<0x2::sui::SUI>,
@@ -434,6 +450,18 @@ internal_create_htlc_escrow(
 
         transfer::share_object(htlc);
     }
+
+    //called by the resolver 
+    //would be called in both the cases- 
+    //when sui is src 
+    //or sui is dst
+
+    //when sui is src- resolver calls to claim the funds locked by the user 
+    //the safety deposit is also returned to the resolver
+
+    //when sui is dst- resolver calls it on user's behalf
+    //user would be tranferred the sui coins 
+    //and resolver would get the safety deposit
 
     public entry fun claim_htlc<T>(
         htlc: &mut HashedTimelockEscrow<T>,
@@ -545,6 +573,9 @@ internal_create_htlc_escrow(
     //     });
     // }
 
+
+    //do recover funds
+    // all the cases are correctly listed and handled within the function
     public entry fun recover_htlc_escrow<T>(
         htlc: &mut HashedTimelockEscrow<T>,
         clock: &Clock,
@@ -611,6 +642,7 @@ internal_create_htlc_escrow(
 
     // --- Functions for Partial Fills ---
 
+    //called by maker or user to announce the order when partial fills are allowed
     public entry fun partial_announce_order<T>(
         total_amount: u64,
         start_price: u64,
@@ -653,6 +685,12 @@ internal_create_htlc_escrow(
         transfer::share_object(order);
     }
 
+    //called by resolver to fill the order when partial fills are allowed
+    // To Do: make reoslver to pass merkle proof as well
+    //( using 1inch's Sdk.Hashlock.getProof(leaves, index) proof can be generated for the required/expected_secret_index)
+    //proof can be then easily passed in this function
+    //and the merkle proof would be verified by our sui contract as well 
+    
     public entry fun fill_order_partial<T>(
         order: &mut PartialOrder<T>,
         fill_amount: u64,
@@ -716,6 +754,8 @@ internal_create_htlc_escrow(
         });
     }
 
+    //called by maker/user when partial fills are enabled 
+
     public entry fun create_htlc_escrow_src_partial<T>(
         order: &mut PartialOrder<T>,
         coins: vector<Coin<T>>,
@@ -750,6 +790,7 @@ internal_create_htlc_escrow(
         );
     }
 
+    //called by resolver when partial fills are enabled 
     public entry fun create_htlc_escrow_dst_partial<T>(
         coins: vector<Coin<T>>,
         resolver_safety_deposit: Coin<0x2::sui::SUI>,
