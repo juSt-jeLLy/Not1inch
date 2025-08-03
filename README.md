@@ -89,32 +89,179 @@ Each `HashedTimelockEscrow` follows strict timelock rules for claiming/cancellin
 
 Core module: `sui_htlc_contract::htlc`
 
-### Key Structs
+## 📃 Function Descriptions
 
-- **`Order<T>`**: Represents a standard, full swap order.
-- **`PartialOrder<T>`**: Allows partial fills. Tracks:
-  - `merkle_root`
-  - `filled_parts_bitmap`
-- **`HashedTimelockEscrow<T>`**: Core HTLC struct. Fields include:
-  - `finality_lock_expires_ms`
-  - `resolver_exclusive_unlock_expires_ms`
-  - `resolver_cancellation_expires_ms`
-  - `maker_cancellation_expires_ms`
-  - `public_cancellation_incentive_expires_ms`
-- **`PartialFill`**: Tracks individual partial fill info (e.g. index used).
+### 🟢 `announce_order<T>`
 
-### Entry Functions
+Creates a **standard HTLC order** (non-partial fill). Emits `OrderAnnouncedEvent`. Used by the **maker** to announce an order with a secret hash and auction details.
 
-- `announce_order`
-- `partial_announce_order`
-- `fill_order`
-- `fill_order_partial`
-- `create_htlc_escrow_src` / `dst`
-- `create_htlc_escrow_src_partial` / `dst_partial`
-- `claim_htlc`
-- `recover_htlc_escrow`
-- `add_safety_deposit`
-- `auction_tick`
+---
+
+### 🟢 `auction_tick<T>`
+
+Calculates and emits the **current price** of an active standard HTLC order. Emits `AuctionTickEvent`.
+
+---
+
+### 🟢 `partial_auction_tick<T>`
+
+Same as `auction_tick`, but for **partial fill** orders. Emits `AuctionTickEvent`.
+
+---
+
+### 🟢 `fill_order<T>`
+
+Allows a **resolver** to fill a **standard order**. Requires bid price ≥ current auction price. Updates order status and emits `OrderFilledEvent`.
+
+---
+
+### 🟢 `add_safety_deposit<T>`
+
+Allows **resolver** to deposit **safety collateral** into the HTLC escrow. Only callable by the resolver.
+
+---
+
+### 🟢 `create_htlc_escrow_src<T>`
+
+Used by **maker** to lock coins into an HTLC when **SUI is the source**. Validates order status and fund amount. Emits `HTLCSrcEscrowCreatedEvent`.
+
+---
+
+### 🟢 `create_htlc_escrow_dst<T>`
+
+Used by **resolver** to lock coins + safety deposit into an HTLC when **SUI is the destination**. Emits `HTLCDstEscrowCreatedEvent`.
+
+---
+
+### ⚖️ `internal_create_htlc_escrow<T>`
+
+**Internal function** for initializing both `src` and `dst` HTLC escrows. Handles balance merging, timestamp calculations, and event emission.
+
+---
+
+### 🟢 `claim_htlc<T>`
+
+Allows a party to **claim HTLC funds** using the **correct secret** after finality period. If `isSrc` is true: resolver claims coins. If false: maker receives coins. Safety deposit always returned to resolver. Emits `HTLCClaimedEvent`.
+
+---
+
+### 🟢 `recover_htlc_escrow<T>`
+
+Allows **refunds** of unclaimed HTLCs based on the current time and unlock conditions. Supports:
+
+- Resolver's own cancellation window
+- Public incentive window
+- Maker's final fallback cancellation Emits `HTLCRefundedEvent`.
+
+---
+
+### 🟢 `partial_announce_order<T>`
+
+Used by **maker** to create an **order with partial fill support**. Initializes Merkle root, secret index bitmap, and total fill amount.
+
+---
+
+### 🟢 `fill_order_partial<T>`
+
+Used by **resolvers** to partially fill an order. Validates bid price, fill ratio, secret index, and (optionally) Merkle proof. Emits `PartialOrderFilledEvent`.
+
+---
+
+### 🟢 `create_htlc_escrow_src_partial<T>`
+
+Used by **maker** to create a **source-side HTLC escrow** for a partial fill. Includes specific `hash_lock_index`.
+
+---
+
+### 🟢 `create_htlc_escrow_dst_partial<T>`
+
+Used by **resolver** to create a **destination-side HTLC escrow** with safety deposit for a partial fill.
+
+---
+
+### ⚖️ `verify_merkle_proof`
+
+Internal utility function to verify a **Merkle proof** for a secret hash. Used to validate the index of a secret in `PartialOrder`.
+
+## 📆 Important Structs
+
+### 🔹 `Order<T>`
+
+Represents a **standard (non-partial fill)** HTLC-based auction order.
+
+```move
+struct Order<T> {
+    id: UID,
+    maker: address,
+    resolver: address,
+    secret_hash: vector<u8>,
+    start_time: u64,
+    duration_ms: u64,
+    start_price: u64,
+    reserve_price: u64,
+    fill_price: u64,
+    status: u8,
+}
+```
+
+### 🔹 `PartialOrder<T>`
+
+Represents a **partial fill order** allowing multiple takers and secret indexing.
+
+```move
+struct PartialOrder<T> {
+    id: UID,
+    maker: address,
+    start_time: u64,
+    duration_ms: u64,
+    start_price: u64,
+    reserve_price: u64,
+    total_amount: u64,
+    remaining: u64,
+    parts_count: u64,
+    merkle_root: vector<u8>,
+    filled_parts_bitmap: vector<bool>,
+    fills: vector<PartialFill>,
+    status: u8,
+}
+```
+
+### 🔹 `PartialFill`
+
+Tracks a **single successful fill** in a `PartialOrder`.
+
+```move
+struct PartialFill {
+    resolver: address,
+    amount: u64,
+    fill_price: u64,
+    hash_lock_index_used: u64,
+}
+```
+
+### 🔹 `HashedTimelockEscrow<T>`
+
+Main escrow struct, used to **lock funds under time and secret conditions**.
+
+```move
+struct HashedTimelockEscrow<T> {
+    id: UID,
+    secret_hash: vector<u8>,
+    finality_lock_expires_ms: u64,
+    resolver_exclusive_unlock_expires_ms: u64,
+    resolver_cancellation_expires_ms: u64,
+    maker_cancellation_expires_ms: u64,
+    public_cancellation_incentive_expires_ms: u64,
+    maker_address: address,
+    resolver_address: address,
+    locked_balance: Balance<T>,
+    claimed: bool,
+    safety_deposit: Balance<0x2::sui::SUI>,
+    isSrc: bool,
+    order_id: ID,
+    hash_lock_index: u64,
+}
+```
 
 
 ## 5. Getting Started
