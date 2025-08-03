@@ -68,16 +68,13 @@ Funds are locked using a `hashlock` (secret hash). Swap completion requires the 
 
 Partial fill support is enabled via **Merkle-based secret indexing**. Each `PartialOrder` commits to a Merkle root of secret hashes, allowing the protocol to validate unique secrets per fill.
 
-The field **expected_secret_index** of the function `fill_order_partial` is calculated using `calculateExpectedSecretIndex` in the [`clientpartial.ts`]() file based on the fill progress. This index is then submitted with each partial fill. The Move contract enforces that:
+The field **expected_secret_index** of the function `fill_order_partial` is calculated using `calculateExpectedSecretIndex` in the [`clientpartial.ts`](https://github.com/juSt-jeLLy/Not1inch/blob/e44bb85d8110fa0ee8244d5ba79ab0fb84691179/sui/clientpartial.ts#L34) file based on the fill progress. This index is then submitted with each partial fill. The Move contract enforces that:
 
 - 🔒 The same secret index cannot be used more than once  
 - 📈 Index progression aligns with the `parts_count` and fill ratio  
 - ✅ Secrets are bound to their claimed Merkle index (future-proof for proof validation)
 
 > This ensures consistency with the protocol logic defined in the whitepaper and prevents secret reuse or double-fills.
-
-The off-chain logic used to calculate this index is implemented [in the client repo](./path/to/client/lib/calculateExpectedSecretIndex.ts).  
-The Move-side validation occurs during `fill_order_partial`, where the submitted index is checked against the current fill state.
 
 Once Merkle proof integration is live, the resolver will also submit a cryptographic proof to confirm the secret hash belongs to the committed Merkle tree.
 
@@ -126,8 +123,8 @@ Each `HashedTimelockEscrow` follows strict timelock rules for claiming/cancellin
 ## 4. Smart Contract Details
 
 Core module: `sui_htlc_contract::htlc`
+SUI_PACKAGE_ID: 0x14e9f86c5e966674e6dbb28545bbff2052e916d93daba5729dbc475b1b336bb4
 
----
 
 ### 📜 Function Descriptions
 
