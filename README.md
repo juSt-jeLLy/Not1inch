@@ -58,6 +58,11 @@ For detailed implementation of Cross Chain Swap is integrated , please refer :
 
 ### Cross-Chain Swap Flow (High-Level)
 
+## Check here for Examples
+
+[Cross chain swap examples with screenshots](https://yagensh.gitbook.io/not1inch/documentation)
+
+
 #### Case 1: Sui is the Source Chain (SUI → EVM)
 Maker funds are on Sui. Resolver commits funds on EVM.
 
