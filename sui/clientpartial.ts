@@ -109,8 +109,8 @@ export async function fillStandardOrder(orderId: string) {
 }
 
 // --- CREATE HTLC DST (STANDARD) ---
-export async function createHTLCDst(secretPreimage: string, makerAddress: string, originalOrderId: string) {
-    const secretHash = hexToU8Vector(keccak256(toUtf8Bytes(secretPreimage)));
+export async function createHTLCDst(secret_hash: string, makerAddress: string, originalOrderId: string) {
+    const secretHash = hexToU8Vector(secret_hash);
     const tx = new Transaction();
 
     const [htlcCoin, safetyDepositCoin] = tx.splitCoins(tx.gas, [
@@ -184,9 +184,9 @@ export async function createHTLCSrc(secretPreimage: string, orderId: string, res
 export async function claimHTLCdst(htlcId: string, secretPreimage: string) {
     console.log('Attempting to claim HTLC ID:', htlcId);
     const tx = new Transaction();
-    const hashLock = Sdk.HashLock.forSingleFill(secretPreimage);
-    const hash = hashLock.toString();
-    const secretPreimageNumberArray = Array.from(toUtf8Bytes(hash));
+    // const hashLock = Sdk.HashLock.forSingleFill(secretPreimage);
+    // const hash = hashLock.toString();
+    const secretPreimageNumberArray = Array.from(toUtf8Bytes(secretPreimage));
 
     tx.moveCall({
         target: `${SUI_PACKAGE_ID}::htlc::claim_htlc`,
